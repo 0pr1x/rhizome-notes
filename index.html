@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Rhizome Notes</title>
+    <link rel="stylesheet" href="style.css" />
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+</head>
+
+<body data-theme="light">
+
+    <div id="cmdPalette" class="cmd-overlay hidden">
+        <div class="cmd-box">
+            <div class="cmd-header">
+                <span class="cmd-icon">⌘</span>
+                <input id="cmdInput" placeholder="搜尋指令或筆記..." autocomplete="off" />
+                <kbd class="cmd-esc">ESC</kbd>
+            </div>
+            <div id="cmdResults" class="cmd-results">
+                <div class="cmd-section-label">快速指令</div>
+                <div class="cmd-item" data-action="new"><span class="cmd-item-icon">📝</span> 新增筆記 <kbd>N</kbd></div>
+                <div class="cmd-item" data-action="open"><span class="cmd-item-icon">📁</span> 開啟工作區 <kbd>O</kbd></div>
+                <div class="cmd-item" data-action="theme"><span class="cmd-item-icon">🌙</span> 切換深色/淺色 <kbd>T</kbd>
+                </div>
+                <div class="cmd-item" data-action="search"><span class="cmd-item-icon">🔍</span> 全域搜尋 <kbd>/</kbd></div>
+                <div class="cmd-item" data-action="graph"><span class="cmd-item-icon">🕸️</span> 知識圖谱 <kbd>G</kbd></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="graphModal" class="modal-overlay hidden">
+        <div class="modal-box graph-modal">
+            <div class="modal-header">
+                <h3>🕸️ 知識連結圖譜</h3>
+                <button id="closeGraph" class="modal-close">✕</button>
+            </div>
+            <canvas id="graphCanvas"></canvas>
+            <div class="graph-hint">節點大小代表連結數量 · 點擊節點開啟筆記</div>
+        </div>
+    </div>
+
+    <div id="exportModal" class="modal-overlay hidden">
+        <div class="modal-box export-modal">
+            <div class="modal-header">
+                <h3>匯出筆記</h3>
+                <button id="closeExport" class="modal-close">✕</button>
+            </div>
+            <div class="export-options">
+                <button class="export-btn" id="exportMd">📄 Markdown (.md)</button>
+                <button class="export-btn" id="exportJson">🗂️ JSON (.json)</button>
+                <button class="export-btn" id="exportTxt">📃 純文字 (.txt)</button>
+                <button class="export-btn" id="exportCopy">📋 複製到剪貼簿</button>
+            </div>
+            <div id="exportPreview" class="export-preview"></div>
+        </div>
+    </div>
+
+    <header class="app-header">
+        <div class="header-left">
+            <button id="btnSidebarToggle" class="icon-btn mobile-only" title="選單">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+            </button>
+            <div class="app-logo">
+                <div class="logo-mark">N</div>
+                <div class="app-name-group">
+                    <span class="app-name">Rhizome Notes</span>
+                    <span class="app-version">v4.0 · Cloud</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="header-center desktop-only">
+            <div class="search-bar">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                </svg>
+                <input id="topSearch" type="text" placeholder="搜尋全部筆記..." />
+                <kbd>/</kbd>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <button id="btnGraph" class="icon-btn desktop-only" title="知識圖譜">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+            </button>
+            <button id="btnTheme" class="icon-btn" title="切換主題">
+                <svg id="themeIconLight" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <circle cx="12" cy="12" r="5" />
+                    <line x1="12" y1="1" x2="12" y2="3" />
+                    <line x1="12" y1="21" x2="12" y2="23" />
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                    <line x1="1" y1="12" x2="3" y2="12" />
+                    <line x1="21" y1="12" x2="23" y2="12" />
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+                <svg id="themeIconDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" class="hidden">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+            </button>
+
+            <button id="btnOpenFolder" class="btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+                連結 Google 雲端
+            </button>
+
+            <button id="btnLogout" class="icon-btn hidden" title="登出雲端"
+                style="font-size: 14px; margin-left: 5px; color: var(--danger);">✕</button>
+
+            <button id="btnCommand" class="icon-btn" title="指令面板 ⌘K">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <div class="app-shell">
+
+        <aside id="sidebar" class="sidebar desktop-only">
+            <div class="sidebar-top">
+                <div class="sidebar-section-label">
+                    工作區 <span id="syncStatus" class="sync-badge">未連結</span>
+                </div>
+                <div id="sidebarActions" class="sidebar-actions hidden">
+                    <button id="btnNewNote" class="btn-sidebar-action btn-new">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        Note
+                    </button>
+                    <button id="btnNewFolder" class="btn-sidebar-action" style="display: none;">📁 Folder</button>
+                    <button id="btnRefresh" class="btn-sidebar-action btn-refresh">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="23 4 23 10 17 10" />
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                        </svg>
+                        同步
+                    </button>
+                </div>
+            </div>
+
+            <div class="sidebar-tree-wrap">
+                <div class="sidebar-section-label">筆記目錄</div>
+                <ul id="noteTree" class="note-tree">
+                    <li class="tree-empty">
+                        <div class="tree-empty-icon">📁</div>
+                        <div>請連結 Google 雲端庫</div>
+                    </li>
+                </ul>
+            </div>
+
+            <div id="backlinksPanel" class="backlinks-panel hidden">
+                <div class="sidebar-section-label">反向連結</div>
+                <ul id="backlinksList" class="backlinks-list"></ul>
+            </div>
+        </aside>
+
+        <main class="editor-main">
+            <div id="editorToolbar" class="editor-toolbar hidden">
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-format="bold" title="粗體 Ctrl+B"><strong>B</strong></button>
+                    <button class="toolbar-btn" data-format="italic" title="斜體 Ctrl+I"><em>I</em></button>
+                    <button class="toolbar-btn" data-format="underline" title="底線 Ctrl+U"><u>U</u></button>
+                    <button class="toolbar-btn" data-format="strikeThrough" title="刪除線"><s>S</s></button>
+                </div>
+                <div class="toolbar-divider"></div>
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-cmd="h1" title="標題 1">H1</button>
+                    <button class="toolbar-btn" data-cmd="h2" title="標題 2">H2</button>
+                    <button class="toolbar-btn" data-cmd="h3" title="標題 3">H3</button>
+                </div>
+                <div class="toolbar-divider"></div>
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-cmd="code" title="行內代碼">&lt;/&gt;</button>
+                    <button class="toolbar-btn" data-cmd="quote" title="引用">❝</button>
+                    <button class="toolbar-btn" data-cmd="link" title="插入連結">🔗</button>
+                    <button class="toolbar-btn" data-cmd="tag" title="插入標籤">#</button>
+                </div>
+                <div class="toolbar-divider"></div>
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-cmd="table" title="插入表格">⊞</button>
+                    <button class="toolbar-btn" data-cmd="hr" title="分隔線">—</button>
+                    <button class="toolbar-btn" data-cmd="todo" title="待辦事項">☐</button>
+                </div>
+                <div class="toolbar-divider"></div>
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-cmd="highlight" title="螢光筆標記">🖍️</button>
+                    <div
+                        style="display: flex; align-items: center; overflow: hidden; width: 28px; height: 28px; border-radius: 4px; margin-left: 2px;">
+                        <input type="color" id="textColorPicker" title="文字顏色"
+                            style="padding:0; width: 150%; height: 150%; margin: -25%; cursor: pointer; border: none; background: transparent;">
+                    </div>
+                </div>
+            </div>
+
+            <div id="noteHeader" class="note-header hidden">
+                <div class="note-header-top">
+                    <div class="note-title-wrap">
+                        <div id="noteTitle" class="note-title" contenteditable="false">未選取筆記</div>
+                        <div id="noteMeta" class="note-meta">—</div>
+                    </div>
+                    <div class="note-header-actions">
+                        <button id="btnExport" class="icon-btn" title="匯出">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                        </button>
+                        <button id="btnDelete" class="icon-btn danger" title="刪除此筆記">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path
+                                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="tagsBar" class="tags-bar">
+                    <span id="tagsList" class="tags-list"></span>
+                    <button id="btnAddTag" class="tag-add-btn" title="新增標籤">+ 標籤</button>
+                </div>
+                <div class="note-stats">
+                    <span id="wordCount">0 字</span>
+                    <span id="blockCount">0 個區塊</span>
+                    <span id="lastSaved">未儲存</span>
+                </div>
+            </div>
+
+            <div id="blocksContainer" class="blocks-container hidden"></div>
+
+            <div id="searchResults" class="search-results hidden"></div>
+        </main>
+
+        <aside id="rightPanel" class="right-panel desktop-only">
+            <div class="right-panel-tabs">
+                <button class="panel-tab active" data-panel="help">說明</button>
+                <button class="panel-tab" data-panel="outline">大綱</button>
+                <button class="panel-tab" data-panel="props">屬性</button>
+            </div>
+
+            <div id="panelHelp" class="panel-content active">
+                <div class="help-section">
+                    <div class="help-title">鍵盤快捷鍵</div>
+                    <div class="help-item"><kbd>Enter</kbd> 新增區塊</div>
+                    <div class="help-item"><kbd>Tab</kbd> 縮排</div>
+                    <div class="help-item"><kbd>Shift+Tab</kbd> 取消縮排</div>
+                    <div class="help-item"><kbd>Backspace</kbd> 刪除空區塊</div>
+                    <div class="help-item"><kbd>⌘K</kbd> 指令面板</div>
+                    <div class="help-item"><kbd>/</kbd> 快速搜尋</div>
+                </div>
+                <div class="help-section">
+                    <div class="help-title">Markdown 支援</div>
+                    <div class="help-item"><code>#</code> → H1 標題</div>
+                    <div class="help-item"><code>**粗體**</code></div>
+                    <div class="help-item"><code>*斜體*</code></div>
+                    <div class="help-item"><code>`代碼`</code></div>
+                    <div class="help-item"><code>[[筆記名]]</code> 雙向連結</div>
+                    <div class="help-item"><code>- [ ]</code> 待辦事項</div>
+                </div>
+                <div class="help-section">
+                    <div class="help-title">區塊操作</div>
+                    <div class="help-item">⦙⦙ 拖曳排序</div>
+                    <div class="help-item">貼上圖片自動儲存</div>
+                    <div class="help-item">貼上 Markdown 表格轉換</div>
+                </div>
+            </div>
+
+            <div id="panelOutline" class="panel-content">
+                <div id="outlineList" class="outline-list">
+                    <div class="outline-empty">此筆記無標題結構</div>
+                </div>
+            </div>
+
+            <div id="panelProps" class="panel-content">
+                <div id="propsContent" class="props-list">
+                    <div class="prop-row">
+                        <span class="prop-key">建立時間</span>
+                        <span id="propCreated" class="prop-val">—</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-key">修改時間</span>
+                        <span id="propModified" class="prop-val">—</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-key">字數</span>
+                        <span id="propWords" class="prop-val">—</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-key">區塊數</span>
+                        <span id="propBlocks" class="prop-val">—</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-key">連結數</span>
+                        <span id="propLinks" class="prop-val">—</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <div id="mobileDrawer" class="mobile-drawer hidden">
+        <div id="drawerMask" class="drawer-mask"></div>
+        <div class="drawer-panel">
+            <div class="drawer-header">
+                <span class="drawer-title">筆記目錄</span>
+                <button id="closeDrawer" class="icon-btn">✕</button>
+            </div>
+            <div class="drawer-actions" id="drawerActions" style="display:none">
+                <button id="btnNewNoteMobile" class="btn-sidebar-action btn-new" style="width:100%">
+                    + 新增筆記
+                </button>
+            </div>
+            <ul id="noteTreeMobile" class="note-tree"></ul>
+        </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
