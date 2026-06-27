@@ -1,293 +1,81 @@
-/* ==========================================
-   Rhizome Notes - Professional Style v4.0
-   ========================================== */
+/* =========================================================
+   Rhizome Notes — Professional Cloud Edition Style
+   ========================================================= */
 
+/* 1. 基礎變數與重置 */
 :root {
-    /* 淺色模式變數 */
+    /* 淺色主題 */
     --bg-primary: #ffffff;
-    --bg-secondary: #f8f9fa;
-    --sidebar-bg: #f3f4f6;
-    --border-color: #e5e7eb;
-    --text-primary: #111827;
-    --text-secondary: #4b5563;
+    --bg-secondary: #f7f7f7;
+    --bg-sidebar: #fcfcfc;
+    --border-color: #e5e5e5;
+    --text-primary: #171717;
+    --text-secondary: #737373;
     --accent-color: #2563eb;
     --accent-hover: #1d4ed8;
     --danger: #ef4444;
-    --success: #10b981;
-    --header-height: 56px;
-    --sidebar-width: 260px;
-    --right-panel-width: 280px;
-    --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+    --shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 [data-theme="dark"] {
-    /* 深色模式變數 */
-    --bg-primary: #111827;
-    --bg-secondary: #1f2937;
-    --sidebar-bg: #111827;
-    --border-color: #374151;
-    --text-primary: #f9fafb;
-    --text-secondary: #9ca3af;
-    --accent-color: #3b82f6;
-    --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.5);
+    --bg-primary: #18181b;
+    --bg-secondary: #27272a;
+    --bg-sidebar: #09090b;
+    --border-color: #3f3f46;
+    --text-primary: #f4f4f5;
+    --text-secondary: #a1a1aa;
+    --accent-color: #60a5fa;
+    --accent-hover: #3b82f6;
+    --danger: #f87171;
+    --shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; color: var(--text-primary); background: var(--bg-primary); height: 100vh; overflow: hidden; }
 
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
-    overflow: hidden; /* 防止整個頁面滾動，改用區域滾動 */
-    height: 100vh;
-}
+/* 2. 佈局架構 */
+.app-shell { display: flex; height: calc(100vh - 56px); }
+.app-header { height: 56px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 16px; justify-content: space-between; }
+.sidebar { width: 260px; border-right: 1px solid var(--border-color); background: var(--bg-sidebar); display: flex; flex-direction: column; }
+.editor-main { flex: 1; overflow-y: auto; padding: 40px; display: flex; flex-direction: column; }
+.right-panel { width: 280px; border-left: 1px solid var(--border-color); background: var(--bg-secondary); }
 
+/* 3. 工具列與編輯區 */
+.editor-toolbar { padding: 8px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 20px; display: flex; gap: 4px; flex-wrap: wrap; background: var(--bg-secondary); }
+.toolbar-btn { padding: 6px 10px; border: none; background: transparent; cursor: pointer; border-radius: 4px; font-size: 13px; color: var(--text-secondary); }
+.toolbar-btn:hover { background: var(--border-color); color: var(--text-primary); }
+.toolbar-divider { width: 1px; background: var(--border-color); margin: 0 4px; }
+
+.block-row { padding: 4px 0; min-height: 24px; outline: none; }
+.block-row:hover { background: rgba(0,0,0,0.02); }
+
+/* 4. 元件樣式 */
+.btn-primary { background: var(--accent-color); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.icon-btn { background: transparent; border: none; padding: 8px; cursor: pointer; border-radius: 4px; color: var(--text-secondary); }
+.icon-btn:hover { background: var(--border-color); }
 .hidden { display: none !important; }
 
-/* --- Header --- */
-.app-header {
-    height: var(--header-height);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 16px;
-    background: var(--bg-primary);
-    z-index: 100;
-}
+/* 5. Modals & Palette */
+.modal-overlay, .cmd-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.4); display: flex; justify-content: center; z-index: 1000; padding-top: 100px; }
+.cmd-box { background: var(--bg-primary); width: 600px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3); overflow: hidden; }
+.cmd-header { padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; }
+.cmd-results { max-height: 400px; overflow-y: auto; padding: 8px; }
+.cmd-item { padding: 10px; cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; }
+.cmd-item:hover { background: var(--bg-secondary); }
 
-.header-left, .header-right { display: flex; align-items: center; gap: 8px; }
-
-.app-logo { display: flex; align-items: center; gap: 10px; }
-.logo-mark {
-    background: var(--accent-color);
-    color: white;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    font-weight: bold;
-}
-
-.app-name { font-weight: 600; font-size: 16px; }
-.app-version { font-size: 10px; color: var(--text-secondary); opacity: 0.7; }
-
-/* --- Search Bar --- */
-.search-bar {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 4px 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 320px;
-}
-
-.search-bar input {
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    outline: none;
-    width: 100%;
-    font-size: 14px;
-}
-
-/* --- Layout Shell --- */
-.app-shell {
-    display: flex;
-    height: calc(100vh - var(--header-height));
-}
-
-/* Sidebar */
-.sidebar {
-    width: var(--sidebar-width);
-    background: var(--sidebar-bg);
-    border-right: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    padding: 16px 0;
-}
-
-.sidebar-section-label {
-    padding: 0 16px 8px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.sync-badge {
-    font-size: 9px;
-    padding: 2px 6px;
-    border-radius: 10px;
-    background: var(--border-color);
-}
-
-.note-tree { list-style: none; overflow-y: auto; flex-grow: 1; }
-.tree-item {
-    padding: 8px 16px;
-    cursor: pointer;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: background 0.2s;
-}
-.tree-item:hover { background: var(--border-color); }
-.tree-item.active { background: var(--accent-color); color: white; }
-
-/* Editor Main */
-.editor-main {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-primary);
-    overflow: hidden;
-}
-
-.editor-toolbar {
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-    background: var(--bg-primary);
-}
-
-.toolbar-btn {
-    background: transparent;
-    border: none;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    color: var(--text-primary);
-    font-size: 14px;
-}
-.toolbar-btn:hover { background: var(--bg-secondary); }
-
-.note-header { padding: 24px 40px 16px; }
-.note-title {
-    font-size: 32px;
-    font-weight: 700;
-    margin-bottom: 8px;
-    outline: none;
-}
-
-.blocks-container {
-    flex-grow: 1;
-    padding: 0 40px 100px;
-    overflow-y: auto;
-}
-
-.note-block {
-    margin-bottom: 8px;
-    line-height: 1.6;
-    font-size: 16px;
-    outline: none;
-}
-
-/* Right Panel */
-.right-panel {
-    width: var(--right-panel-width);
-    border-left: 1px solid var(--border-color);
-    background: var(--bg-primary);
-    display: flex;
-    flex-direction: column;
-}
-
-.right-panel-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border-color);
-}
-.panel-tab {
-    flex: 1;
-    padding: 12px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 13px;
-}
-.panel-tab.active {
-    color: var(--accent-color);
-    border-bottom: 2px solid var(--accent-color);
-}
-
-/* Modals */
-.modal-overlay, .cmd-overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.cmd-box {
-    background: var(--bg-primary);
-    width: 600px;
-    border-radius: 12px;
-    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
-    overflow: hidden;
-}
-
-.cmd-header {
-    padding: 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-/* Responsive */
+/* 6. 響應式處理 */
 @media (max-width: 768px) {
     .desktop-only { display: none !important; }
-    .mobile-only { display: flex !important; }
-    .sidebar {
-        position: fixed;
-        left: -100%;
-        top: var(--header-height);
-        bottom: 0;
-        z-index: 99;
-        transition: 0.3s;
-        width: 80%;
-    }
-    .sidebar.active { left: 0; }
-    .note-header, .blocks-container { padding: 16px; }
+    .mobile-only { display: block !important; }
+    .editor-main { padding: 20px; }
+    .sidebar { display: none; } /* 透過 mobileDrawer 控制 */
 }
 
-/* Button Styles */
-.btn-primary {
-    background: var(--accent-color);
-    color: white;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
+/* 7. Toast 提示 */
+.toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #333; color: white; border-radius: 8px; z-index: 9999; }
 
-.icon-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 6px;
-}
-.icon-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+/* 8. 標題與字體調整 */
+.note-title { font-size: 2.5em; font-weight: 800; margin-bottom: 20px; outline: none; }
+h1, h2, h3 { margin: 1em 0 0.5em; }
+.sync-badge { font-size: 11px; padding: 2px 6px; background: #e5e7eb; border-radius: 10px; color: #4b5563; }
+.sync-badge.synced { background: #dcfce7; color: #166534; }
