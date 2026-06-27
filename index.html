@@ -3,13 +3,14 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Nexus Notes - Cloud Edition</title>
+    <title>Rhizome Notes - Cloud FAE Edition</title>
     <link rel="stylesheet" href="style.css" />
-    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
-    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <!-- Google SDK -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
 </head>
 <body data-theme="light">
-
+    <!-- 指令面板 (Command Palette ) -->
     <div id="cmdPalette" class="cmd-overlay hidden">
         <div class="cmd-box">
             <div class="cmd-header">
@@ -18,84 +19,99 @@
                 <kbd class="cmd-esc">ESC</kbd>
             </div>
             <div id="cmdResults" class="cmd-results">
-                <div class="cmd-section-label">快速指令</div>
-                <div class="cmd-item" data-action="new"><span class="cmd-item-icon">📝</span> 新增筆記 <kbd>N</kbd></div>
-                <div class="cmd-item" data-action="auth"><span class="cmd-item-icon">☁️</span> Google 雲端登入 <kbd>L</kbd></div>
-                <div class="cmd-item" data-action="theme"><span class="cmd-item-icon">🌙</span> 切換深色/淺色 <kbd>T</kbd></div>
-                <div class="cmd-item" data-action="search"><span class="cmd-item-icon">🔍</span> 全域搜尋 <kbd>/</kbd></div>
+                <!-- 由 JS 動態生成 -->
             </div>
         </div>
     </div>
 
-    <div class="app-layout">
-        <aside class="sidebar">
-            <div class="app-header">
-                <h2>Nexus Notes</h2>
-                <button id="btnAuth" class="btn-sidebar-action">登入 Google</button>
+    <!-- 頂部導覽列 -->
+    <header class="app-header">
+        <div class="header-left">
+            <button id="btnSidebarToggle" class="icon-btn mobile-only" title="選單">☰</button>
+            <div class="app-logo">
+                <div class="logo-mark">N</div>
+                <div class="app-name-group">
+                    <span class="app-name">Rhizome Notes</span>
+                    <span class="app-version">v4.0 · Cloud</span>
+                </div>
             </div>
-            
-            <div class="sidebar-section">
-                <h3>工作區 <span id="syncStatus" class="status-dot"></span></h3>
+        </div>
+
+        <div class="header-center desktop-only">
+            <div class="search-bar">
+                <span>🔍</span>
+                <input id="topSearch" type="text" placeholder="搜尋全部筆記..." />
+                <kbd>/</kbd>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <button id="btnTheme" class="icon-btn" title="切換主題">🌓</button>
+            <button id="btnOpenFolder" class="btn-primary">☁️ 連結 Google 雲端</button>
+            <button id="btnLogout" class="icon-btn hidden" title="登出">✕</button>
+        </div>
+    </header>
+
+    <div class="app-shell">
+        <!-- 左側側邊欄 -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-top">
+                <div class="sidebar-section-label">
+                    工作區 <span id="syncStatus" class="sync-badge">未連結</span>
+                </div>
+                <div id="sidebarActions" class="sidebar-actions hidden">
+                    <button id="btnNewNote" class="btn-primary" style="width: 100%; margin-bottom: 10px;">+ 新增筆記</button>
+                    <button id="btnRefresh" class="icon-btn">🔄 同步雲端</button>
+                </div>
+            </div>
+            <div class="sidebar-tree-wrap">
+                <div class="sidebar-section-label">筆記目錄</div>
                 <ul id="noteTree" class="note-tree">
-                    </ul>
-                <button id="btnNewNote" class="btn-sidebar-action btn-new">+ 新增筆記</button>
-            </div>
-            
-            <div class="sidebar-section">
-                <h3>標籤 (Tags)</h3>
-                <div id="tagsBar" class="tags-bar"></div>
+                    <!-- 筆記列表 -->
+                </ul>
             </div>
         </aside>
 
-        <main class="editor-area">
-            <div class="note-header">
-                <input type="text" id="noteTitle" class="note-title" placeholder="無標題筆記..." disabled />
-                <div class="note-header-actions">
-                    <button id="btnMobileMenu" class="icon-btn mobile-only">☰</button>
+        <!-- 主要編輯區 -->
+        <main class="editor-main">
+            <!-- 編輯工具列 (手機端會自動隱藏) -->
+            <div id="editorToolbar" class="editor-toolbar hidden">
+                <button class="toolbar-btn" data-cmd="bold"><b>B</b></button>
+                <button class="toolbar-btn" data-cmd="italic"><i>I</i></button>
+                <button class="toolbar-btn" data-cmd="h1">H1</button>
+                <button class="toolbar-btn" data-cmd="h2">H2</button>
+                <button class="toolbar-btn" data-cmd="ul">清單</button>
+            </div>
+
+            <div id="noteHeader" class="note-header hidden">
+                <div id="noteTitle" class="note-title" contenteditable="true">未選取筆記</div>
+                <div class="note-stats">
+                    <span id="lastSaved">未儲存</span>
                 </div>
             </div>
-            
-            <div id="blocksContainer" class="blocks-container">
-                <div class="empty-state">請選擇或建立一則筆記</div>
+
+            <div id="blocksContainer" class="blocks-container hidden">
+                <!-- 內容區塊 -->
             </div>
         </main>
 
-        <aside class="right-panel">
-            <div class="sidebar-section">
-                <h3>筆記資訊</h3>
-                <div class="note-stats">
-                    <div class="prop-row">
-                        <span class="prop-key">字數</span>
-                        <span id="propWords" class="prop-val">—</span>
-                    </div>
-                    <div class="prop-row">
-                        <span class="prop-key">區塊數</span>
-                        <span id="propBlocks" class="prop-val">—</span>
-                    </div>
-                    <div class="prop-row">
-                        <span class="prop-key">連結數</span>
-                        <span id="propLinks" class="prop-val">—</span>
-                    </div>
-                </div>
+        <!-- 右側面板 (桌面端) -->
+        <aside id="rightPanel" class="right-panel desktop-only">
+            <div class="right-panel-tabs">
+                <button class="panel-tab active">說明</button>
+            </div>
+            <div class="panel-content active" style="padding: 20px;">
+                <h4>快捷鍵</h4>
+                <p>⌘K : 指令面板</p>
+                <p>/ : 快速搜尋</p>
+                <hr style="margin: 10px 0;">
+                <h4>FAE 專業提示</h4>
+                <p>確保 P2P 替代料比對正確。</p>
             </div>
         </aside>
     </div>
 
-    <div id="mobileDrawer" class="mobile-drawer hidden">
-        <div id="drawerMask" class="drawer-mask"></div>
-        <div class="drawer-panel">
-            <div class="drawer-header">
-                <span class="drawer-title">筆記目錄</span>
-                <button id="closeDrawer" class="icon-btn">✕</button>
-            </div>
-            <div class="drawer-actions" id="drawerActions">
-                <button id="btnNewNoteMobile" class="btn-sidebar-action btn-new" style="width:100%">+ 新增筆記</button>
-                <button id="btnAuthMobile" class="btn-sidebar-action" style="width:100%; margin-top:8px;">登入 Google</button>
-            </div>
-            <ul id="noteTreeMobile" class="note-tree"></ul>
-        </div>
-    </div>
-
+    <!-- Toast 通知 -->
     <div id="toast" class="toast hidden"></div>
 
     <script src="app.js"></script>
