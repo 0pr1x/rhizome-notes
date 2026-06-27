@@ -52,7 +52,6 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font)}
 .editor{flex:1;overflow:auto;padding:18px;outline:none;line-height:1.8;background:var(--bg)}
 .editor:empty:before{content:"開始輸入你的筆記...";color:var(--muted)}
 .footer-note{padding:10px 16px;border-top:1px solid var(--border);color:var(--muted);font-size:12px;background:var(--bg)}
-.wiki-link{color:var(--accent);cursor:pointer;text-decoration:underline}
 .todo{display:flex;align-items:center;gap:8px;margin:6px 0}
 .image-wrap{margin:10px 0}
 .image-wrap img{max-width:100%;border-radius:12px;border:1px solid var(--border);display:block}
