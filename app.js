@@ -1,10 +1,10 @@
 'use strict';
 
-const CLIENT_ID = '249300683470-vtgnnd73jvhe1ku7ckoftasrn8tesmfe.apps.googleusercontent.com';
+const CLIENT_ID = 'PASTE_YOUR_GOOGLE_OAUTH_CLIENT_ID';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly';
 const APP_FOLDER = 'CloudNotes';
-const NOTES_FOLDER = 'CloudNotes/notes';
-const IMAGES_FOLDER = 'CloudNotes/image';
+const NOTES_FOLDER = 'notes';
+const IMAGES_FOLDER = 'image';
 const NOTES_MIME = 'application/json';
 
 const state = {
@@ -15,9 +15,7 @@ const state = {
   currentId: null,
   dirty: false,
   theme: localStorage.getItem('theme') || 'light',
-  driveReady: false,
-  noteFileMap: new Map(),
-  searchIndex: []
+  driveReady: false
 };
 
 const $ = id => document.getElementById(id);
@@ -59,7 +57,7 @@ function ensureNoteShape(note) {
     modified: note.modified || Date.now(),
     tags: Array.isArray(note.tags) ? note.tags : [],
     driveFileId: note.driveFileId || '',
-    imageRoot: note.imageRoot || '~/image'
+    folderId: note.folderId || ''
   };
 }
 
@@ -187,13 +185,7 @@ function insertBlock(type) {
 }
 
 async function loadGoogleApi() {
-  await new Promise(resolve => {
-    if (window.gapi) return resolve();
-    const t = setInterval(() => {
-      if (window.gapi) { clearInterval(t); resolve(); }
-    }, 50);
-  });
-
+  if (!window.gapi) throw new Error('gapi not loaded');
   await gapi.load('client', async () => {
     await gapi.client.init({
       apiKey: '',
@@ -231,35 +223,41 @@ async function driveFetch(url, options = {}) {
   return res;
 }
 
-async function ensureFolder(name, parentId = null) {
+async function findFolder(name, parentId = 'root') {
   const q = [
     `mimeType='application/vnd.google-apps.folder'`,
     `name='${name.replace(/'/g, "\\'")}'`,
-    parentId ? `'${parentId}' in parents` : `'root' in parents`,
+    `'${parentId}' in parents`,
     `trashed=false`
   ].join(' and ');
-
-  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`);
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`);
   const data = await r.json();
-  if (data.files && data.files.length) return data.files[0].id;
+  return data.files?.[0]?.id || '';
+}
 
+async function createFolder(name, parentId = 'root') {
   const body = {
     name,
     mimeType: 'application/vnd.google-apps.folder',
-    parents: parentId ? [parentId] : ['root']
+    parents: [parentId]
   };
-  const cr = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+  const r = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
     method: 'POST',
     body: JSON.stringify(body)
   });
-  const created = await cr.json();
-  return created.id;
+  return await r.json();
 }
 
 async function ensureAppStructure() {
-  const appId = await ensureFolder(APP_FOLDER, null);
-  const notesId = await ensureFolder('notes', appId);
-  const imagesId = await ensureFolder('image', appId);
+  let appId = await findFolder(APP_FOLDER, 'root');
+  if (!appId) appId = (await createFolder(APP_FOLDER, 'root')).id;
+
+  let notesId = await findFolder(NOTES_FOLDER, appId);
+  if (!notesId) notesId = (await createFolder(NOTES_FOLDER, appId)).id;
+
+  let imagesId = await findFolder(IMAGES_FOLDER, appId);
+  if (!imagesId) imagesId = (await createFolder(IMAGES_FOLDER, appId)).id;
+
   state.driveReady = true;
   return { appId, notesId, imagesId };
 }
@@ -270,7 +268,6 @@ async function listDriveNotes(notesFolderId) {
     `trashed=false`,
     `mimeType='${NOTES_MIME}'`
   ].join(' and ');
-
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime,createdTime,parents)&pageSize=1000`;
   const r = await driveFetch(url);
   const data = await r.json();
@@ -282,30 +279,56 @@ async function downloadDriveFile(fileId) {
   return await r.text();
 }
 
-async function upsertDriveJsonFile(folderId, name, jsonText, existingId = '') {
-  const metadata = {
+async function createJsonFile(folderId, name, jsonText) {
+  const metadata = new Blob([JSON.stringify({
     name,
     mimeType: NOTES_MIME,
     parents: [folderId]
-  };
+  })], { type: 'application/json' });
 
-  if (!existingId) {
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', new Blob([jsonText], { type: 'application/json' }));
-    const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
-      method: 'POST',
-      body: form
-    });
-    return await r.json();
-  }
+  const file = new Blob([jsonText], { type: 'application/json' });
 
-  const r = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media&fields=id,name`, {
+  const form = new FormData();
+  form.append('metadata', metadata);
+  form.append('file', file);
+
+  const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+    method: 'POST',
+    body: form
+  });
+  return await r.json();
+}
+
+async function updateJsonFile(fileId, jsonText) {
+  const r = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name`, {
     method: 'PATCH',
     body: jsonText,
     headers: { 'Content-Type': 'application/json' }
   });
   return await r.json();
+}
+
+async function deleteDriveFile(fileId) {
+  await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
+}
+
+async function renameDriveFile(fileId, newName) {
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: newName })
+  });
+  return await r.json();
+}
+
+function getImageUrl(path) {
+  const s = String(path || '').trim();
+  if (s.startsWith('~/image/')) return s;
+  if (s.startsWith('~')) return s;
+  return `~/${s}`;
+}
+
+function renderDriveLinks() {
+  // 用前端資料結構處理，不自動偷打 API
 }
 
 async function loadFromDrive() {
@@ -323,14 +346,15 @@ async function loadFromDrive() {
         content: obj.content || '',
         modified: obj.modified || Date.now(),
         tags: obj.tags || [],
-        driveFileId: f.id
+        driveFileId: f.id,
+        folderId: notesId
       }));
     } catch (e) {
       console.warn('skip file', f.name, e);
     }
   }
 
-  state.notes = loaded.length ? loaded : [ensureNoteShape({ title: 'Welcome', content: '按「新增筆記」開始。' })];
+  state.notes = loaded.length ? loaded : [ensureNoteShape({ title: 'Welcome', content: '按「新增筆記」開始。', folderId: notesId })];
   state.currentId = state.notes[0].id;
   state.dirty = false;
   saveLocalCache();
@@ -341,11 +365,6 @@ async function loadFromDrive() {
 
 async function saveCurrentNote() {
   if (state.mode === 'mobile') return toast('手機模式僅可搜尋');
-  if (!state.authed) {
-    saveLocalCache();
-    toast('未登入，已存本機快取');
-    return;
-  }
 
   const note = currentNote();
   if (!note) return;
@@ -355,6 +374,13 @@ async function saveCurrentNote() {
   note.modified = Date.now();
 
   saveLocalCache();
+
+  if (!state.authed) {
+    toast('未登入，已存本機快取');
+    state.dirty = false;
+    $('saveState').textContent = '已儲存';
+    return;
+  }
 
   const { notesId } = await ensureAppStructure();
   const payload = JSON.stringify({
@@ -366,9 +392,9 @@ async function saveCurrentNote() {
   }, null, 2);
 
   if (note.driveFileId) {
-    await upsertDriveJsonFile(notesId, `${note.title}.json`, payload, note.driveFileId);
+    await updateJsonFile(note.driveFileId, payload);
   } else {
-    const created = await upsertDriveJsonFile(notesId, `${note.title}.json`, payload, '');
+    const created = await createJsonFile(notesId, `${note.title}.json`, payload);
     note.driveFileId = created.id;
   }
 
@@ -395,14 +421,8 @@ function newNote() {
   toast('已新增筆記');
 }
 
-function updateSearchResults(q) {
-  renderList(q);
-}
-
 function bindEvents() {
-  $('btnTheme').addEventListener('click', () => {
-    setTheme(state.theme === 'dark' ? 'light' : 'dark');
-  });
+  $('btnTheme').addEventListener('click', () => setTheme(state.theme === 'dark' ? 'light' : 'dark'));
 
   $('btnLogin').addEventListener('click', async () => {
     try {
@@ -436,7 +456,7 @@ function bindEvents() {
   });
 
   $('btnNew').addEventListener('click', newNote);
-  $('search').addEventListener('input', e => updateSearchResults(e.target.value));
+  $('search').addEventListener('input', e => renderList(e.target.value));
 
   $('noteTitle').addEventListener('input', () => {
     const note = currentNote();
