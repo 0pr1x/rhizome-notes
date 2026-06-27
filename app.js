@@ -1,14 +1,23 @@
 'use strict';
 
+const CLIENT_ID = '249300683470-vtgnnd73jvhe1ku7ckoftasrn8tesmfe.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly';
+const APP_FOLDER = 'CloudNotes';
+const NOTES_FOLDER = 'CloudNotes/notes';
+const IMAGES_FOLDER = 'CloudNotes/image';
+const NOTES_MIME = 'application/json';
+
 const state = {
+  token: null,
   authed: false,
   mode: window.innerWidth <= 900 ? 'mobile' : 'desktop',
   notes: [],
   currentId: null,
   dirty: false,
   theme: localStorage.getItem('theme') || 'light',
-  dbKey: 'cloud-notes-local-cache',
-  driveReady: false
+  driveReady: false,
+  noteFileMap: new Map(),
+  searchIndex: []
 };
 
 const $ = id => document.getElementById(id);
@@ -27,17 +36,19 @@ function setTheme(theme) {
   localStorage.setItem('theme', theme);
 }
 
-function loadLocalCache() {
-  try {
-    const raw = localStorage.getItem(state.dbKey);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
-function saveLocalCache() {
-  localStorage.setItem(state.dbKey, JSON.stringify(state.notes));
+function stripHtml(html) {
+  return String(html || '').replace(/<[^>]*>/g, ' ');
+}
+
+function countWords(text) {
+  return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
 }
 
 function ensureNoteShape(note) {
@@ -47,20 +58,26 @@ function ensureNoteShape(note) {
     content: note.content || '',
     modified: note.modified || Date.now(),
     tags: Array.isArray(note.tags) ? note.tags : [],
+    driveFileId: note.driveFileId || '',
     imageRoot: note.imageRoot || '~/image'
   };
 }
 
-function initLocalNotes() {
-  const cached = loadLocalCache();
-  state.notes = cached.length ? cached.map(ensureNoteShape) : [ensureNoteShape({ title: 'Welcome', content: '這是一個可部署到 GitHub 的雲端筆記骨架。' })];
-  state.currentId = state.notes[0].id;
-  renderList();
-  renderCurrent();
-}
-
 function currentNote() {
   return state.notes.find(n => n.id === state.currentId);
+}
+
+function loadLocalCache() {
+  try {
+    const raw = localStorage.getItem('cloud-notes-cache');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalCache() {
+  localStorage.setItem('cloud-notes-cache', JSON.stringify(state.notes));
 }
 
 function renderList(filter = '') {
@@ -90,13 +107,12 @@ function renderList(filter = '') {
 function renderCurrent() {
   const note = currentNote();
   if (!note) return;
-
   $('noteTitle').value = note.title;
   $('editor').innerHTML = note.content;
   $('wordCount').textContent = `${countWords(stripHtml(note.content))} 字`;
   $('saveState').textContent = state.dirty ? '未儲存' : '已載入';
   $('status').textContent = state.authed
-    ? (state.mode === 'mobile' ? '已登入，手機預設只讀' : '已登入，可編輯')
+    ? (state.mode === 'mobile' ? '已登入，手機只讀' : '已登入，可編輯')
     : '尚未登入';
   applyModeRules();
 }
@@ -110,39 +126,224 @@ function applyModeRules() {
   $('btnNew').disabled = readOnly;
 }
 
-function stripHtml(html) {
-  return String(html || '').replace(/<[^>]*>/g, ' ');
-}
-
-function escapeHtml(s) {
-  return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function countWords(text) {
-  return text.trim() ? text.trim().split(/\s+/).length : 0;
-}
-
 function markDirty() {
   state.dirty = true;
   $('saveState').textContent = '未儲存';
 }
 
-function serializeNotes() {
-  return JSON.stringify({
-    updatedAt: Date.now(),
-    notes: state.notes
-  }, null, 2);
+function normalizeImageSrc(src) {
+  let s = String(src || '').trim();
+  if (!s) return s;
+  if (s.startsWith('~')) return s;
+  return `~/${s.replace(/^\/+/, '')}`;
 }
 
-async function manualSave() {
+function insertBlock(type) {
+  if (state.mode === 'mobile') return toast('手機模式僅可搜尋');
+  const ed = $('editor');
+  ed.focus();
+
+  if (type === 'hr') {
+    document.execCommand('insertHTML', false, '<hr>');
+    markDirty();
+    return;
+  }
+  if (type === 'todo') {
+    document.execCommand('insertHTML', false, '<div class="todo"><input type="checkbox"> <span>待辦事項</span></div>');
+    markDirty();
+    return;
+  }
+  if (type === 'img') {
+    const src = prompt('圖片相對路徑，例如 ~/image/a.png');
+    if (!src) return;
+    const path = normalizeImageSrc(src);
+    document.execCommand('insertHTML', false, `<div class="image-wrap"><img src="${escapeHtml(path)}" alt="image"></div>`);
+    markDirty();
+    return;
+  }
+  if (type === 'link') {
+    const url = prompt('URL');
+    const text = prompt('顯示文字') || url;
+    if (!url) return;
+    document.execCommand('insertHTML', false, `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(text)}</a>`);
+    markDirty();
+    return;
+  }
+  if (type === 'quote') {
+    document.execCommand('insertHTML', false, '<blockquote>引用文字</blockquote>');
+    markDirty();
+    return;
+  }
+  if (type === 'code') {
+    document.execCommand('insertHTML', false, '<code>code</code>');
+    markDirty();
+    return;
+  }
+  if (type === 'h1' || type === 'h2' || type === 'h3') {
+    document.execCommand('insertHTML', false, `<${type}>標題</${type}>`);
+    markDirty();
+    return;
+  }
+}
+
+async function loadGoogleApi() {
+  await new Promise(resolve => {
+    if (window.gapi) return resolve();
+    const t = setInterval(() => {
+      if (window.gapi) { clearInterval(t); resolve(); }
+    }, 50);
+  });
+
+  await gapi.load('client', async () => {
+    await gapi.client.init({
+      apiKey: '',
+      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+    });
+  });
+}
+
+async function getToken() {
+  return new Promise((resolve, reject) => {
+    if (!window.google?.accounts?.oauth2) return reject(new Error('GIS not loaded'));
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: tokenResponse => {
+        if (tokenResponse.error) return reject(tokenResponse);
+        state.token = tokenResponse.access_token;
+        gapi.client.setToken({ access_token: state.token });
+        state.authed = true;
+        resolve(tokenResponse.access_token);
+      }
+    });
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  });
+}
+
+async function driveFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${state.token}`);
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const res = await fetch(url, { ...options, headers });
+  if (!res.ok) throw new Error(await res.text());
+  return res;
+}
+
+async function ensureFolder(name, parentId = null) {
+  const q = [
+    `mimeType='application/vnd.google-apps.folder'`,
+    `name='${name.replace(/'/g, "\\'")}'`,
+    parentId ? `'${parentId}' in parents` : `'root' in parents`,
+    `trashed=false`
+  ].join(' and ');
+
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`);
+  const data = await r.json();
+  if (data.files && data.files.length) return data.files[0].id;
+
+  const body = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+    parents: parentId ? [parentId] : ['root']
+  };
+  const cr = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+  const created = await cr.json();
+  return created.id;
+}
+
+async function ensureAppStructure() {
+  const appId = await ensureFolder(APP_FOLDER, null);
+  const notesId = await ensureFolder('notes', appId);
+  const imagesId = await ensureFolder('image', appId);
+  state.driveReady = true;
+  return { appId, notesId, imagesId };
+}
+
+async function listDriveNotes(notesFolderId) {
+  const q = [
+    `'${notesFolderId}' in parents`,
+    `trashed=false`,
+    `mimeType='${NOTES_MIME}'`
+  ].join(' and ');
+
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime,createdTime,parents)&pageSize=1000`;
+  const r = await driveFetch(url);
+  const data = await r.json();
+  return data.files || [];
+}
+
+async function downloadDriveFile(fileId) {
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  return await r.text();
+}
+
+async function upsertDriveJsonFile(folderId, name, jsonText, existingId = '') {
+  const metadata = {
+    name,
+    mimeType: NOTES_MIME,
+    parents: [folderId]
+  };
+
+  if (!existingId) {
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([jsonText], { type: 'application/json' }));
+    const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+      method: 'POST',
+      body: form
+    });
+    return await r.json();
+  }
+
+  const r = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media&fields=id,name`, {
+    method: 'PATCH',
+    body: jsonText,
+    headers: { 'Content-Type': 'application/json' }
+  });
+  return await r.json();
+}
+
+async function loadFromDrive() {
+  const { notesId } = await ensureAppStructure();
+  const files = await listDriveNotes(notesId);
+  const loaded = [];
+
+  for (const f of files) {
+    try {
+      const text = await downloadDriveFile(f.id);
+      const obj = JSON.parse(text);
+      loaded.push(ensureNoteShape({
+        id: obj.id || crypto.randomUUID(),
+        title: obj.title || f.name.replace(/\.json$/i, ''),
+        content: obj.content || '',
+        modified: obj.modified || Date.now(),
+        tags: obj.tags || [],
+        driveFileId: f.id
+      }));
+    } catch (e) {
+      console.warn('skip file', f.name, e);
+    }
+  }
+
+  state.notes = loaded.length ? loaded : [ensureNoteShape({ title: 'Welcome', content: '按「新增筆記」開始。' })];
+  state.currentId = state.notes[0].id;
+  state.dirty = false;
+  saveLocalCache();
+  renderList($('search').value);
+  renderCurrent();
+  toast('已從 Google Drive 載入');
+}
+
+async function saveCurrentNote() {
+  if (state.mode === 'mobile') return toast('手機模式僅可搜尋');
   if (!state.authed) {
     saveLocalCache();
-    toast('已存到本機快取');
-    state.dirty = false;
-    $('saveState').textContent = '已儲存';
+    toast('未登入，已存本機快取');
     return;
   }
 
@@ -155,27 +356,35 @@ async function manualSave() {
 
   saveLocalCache();
 
-  if (!state.driveReady) {
-    toast('雲端未連線，已先存本機');
-    state.dirty = false;
-    $('saveState').textContent = '已儲存';
-    return;
+  const { notesId } = await ensureAppStructure();
+  const payload = JSON.stringify({
+    id: note.id,
+    title: note.title,
+    content: note.content,
+    modified: note.modified,
+    tags: note.tags
+  }, null, 2);
+
+  if (note.driveFileId) {
+    await upsertDriveJsonFile(notesId, `${note.title}.json`, payload, note.driveFileId);
+  } else {
+    const created = await upsertDriveJsonFile(notesId, `${note.title}.json`, payload, '');
+    note.driveFileId = created.id;
   }
 
-  // 這裡只在按下儲存時才呼叫 Drive API
-  // 實作方式可接 OAuth token 後呼叫 Google Drive Files API
-  // 目前保留架構，不自動請求任何 API
-  toast('已儲存');
   state.dirty = false;
   $('saveState').textContent = '已儲存';
   renderList($('search').value);
+  toast('已儲存到 Google Drive');
 }
 
 function newNote() {
   if (state.mode === 'mobile') return toast('手機模式僅可搜尋');
   const note = ensureNoteShape({
     title: 'New Note',
-    content: ''
+    content: '',
+    modified: Date.now(),
+    tags: []
   });
   state.notes.unshift(note);
   state.currentId = note.id;
@@ -186,80 +395,8 @@ function newNote() {
   toast('已新增筆記');
 }
 
-function insertBlock(type) {
-  if (state.mode === 'mobile') return;
-  const ed = $('editor');
-  ed.focus();
-
-  if (type === 'hr') {
-    document.execCommand('insertHTML', false, '<hr>');
-    markDirty();
-    return;
-  }
-
-  if (type === 'todo') {
-    document.execCommand('insertHTML', false, '<div class="todo"><input type="checkbox"> <span>待辦事項</span></div>');
-    markDirty();
-    return;
-  }
-
-  if (type === 'img') {
-    const src = prompt('圖片相對路徑，例如 ~/image/a.png');
-    if (!src) return;
-    const path = normalizeImageSrc(src);
-    document.execCommand('insertHTML', false, `<div class="image-wrap"><img src="${escapeHtml(path)}" alt="image"></div>`);
-    markDirty();
-    return;
-  }
-
-  if (type === 'link') {
-    const url = prompt('URL');
-    const text = prompt('顯示文字') || url;
-    if (!url) return;
-    document.execCommand('insertHTML', false, `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(text)}</a>`);
-    markDirty();
-    return;
-  }
-
-  if (type === 'quote') {
-    document.execCommand('insertHTML', false, '<blockquote>引用文字</blockquote>');
-    markDirty();
-    return;
-  }
-
-  if (type === 'code') {
-    document.execCommand('insertHTML', false, '<code>code</code>');
-    markDirty();
-    return;
-  }
-
-  if (type === 'h1' || type === 'h2' || type === 'h3') {
-    document.execCommand('insertHTML', false, `<${type}>標題</${type}>`);
-    markDirty();
-    return;
-  }
-
-  document.execCommand('insertText', false, '');
-}
-
-function normalizeImageSrc(src) {
-  let s = String(src || '').trim();
-  if (s.startsWith('~')) return s;
-  return `~/${s.replace(/^\/+/, '')}`;
-}
-
-function countLinksInHtml(html) {
-  const m = String(html || '').match(/\[\[([^\]]+)\]\]/g);
-  return m ? m.length : 0;
-}
-
-function updateSidebarStats() {
-  const q = $('search').value.trim().toLowerCase();
+function updateSearchResults(q) {
   renderList(q);
-}
-
-function htmlToTextForSearch(html) {
-  return stripHtml(html).replace(/\s+/g, ' ').trim();
 }
 
 function bindEvents() {
@@ -268,32 +405,46 @@ function bindEvents() {
   });
 
   $('btnLogin').addEventListener('click', async () => {
-    state.authed = true;
-    state.driveReady = true;
-    $('status').textContent = state.mode === 'mobile' ? '已登入，手機只讀' : '已登入，可編輯';
-    toast('已完成登入（示意架構）');
+    try {
+      await loadGoogleApi();
+      await getToken();
+      $('status').textContent = state.mode === 'mobile' ? '已登入，手機只讀' : '已登入，可編輯';
+      toast('Google 登入成功');
+    } catch (e) {
+      console.error(e);
+      toast('登入失敗');
+    }
   });
 
   $('btnLoad').addEventListener('click', async () => {
-    // 只在明確按下時才載入
-    state.notes = loadLocalCache().map(ensureNoteShape);
-    if (!state.notes.length) initLocalNotes();
-    renderList($('search').value);
-    renderCurrent();
-    toast('已載入資料');
+    if (!state.authed) return toast('請先登入 Google');
+    try {
+      await loadFromDrive();
+    } catch (e) {
+      console.error(e);
+      toast('載入失敗');
+    }
   });
 
-  $('btnSave').addEventListener('click', manualSave);
-  $('btnNew').addEventListener('click', newNote);
+  $('btnSave').addEventListener('click', async () => {
+    try {
+      await saveCurrentNote();
+    } catch (e) {
+      console.error(e);
+      toast('儲存失敗');
+    }
+  });
 
-  $('search').addEventListener('input', e => renderList(e.target.value));
+  $('btnNew').addEventListener('click', newNote);
+  $('search').addEventListener('input', e => updateSearchResults(e.target.value));
 
   $('noteTitle').addEventListener('input', () => {
     const note = currentNote();
     if (!note) return;
     note.title = $('noteTitle').value;
     note.modified = Date.now();
-    markDirty();
+    state.dirty = true;
+    $('saveState').textContent = '未儲存';
     renderList($('search').value);
   });
 
@@ -303,41 +454,35 @@ function bindEvents() {
     note.content = $('editor').innerHTML;
     note.modified = Date.now();
     $('wordCount').textContent = `${countWords(stripHtml(note.content))} 字`;
-    $('saveState').textContent = '未儲存';
     state.dirty = true;
+    $('saveState').textContent = '未儲存';
     renderList($('search').value);
-  });
-
-  $('editor').addEventListener('paste', e => {
-    const text = e.clipboardData?.getData('text/plain');
-    if (text && text.includes('~/image/')) {
-      e.preventDefault();
-      document.execCommand('insertHTML', false, escapeHtml(text));
-      markDirty();
-    }
   });
 
   $('editor').addEventListener('keydown', e => {
     if (e.key === 'Tab') {
       e.preventDefault();
       document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
-      markDirty();
+      state.dirty = true;
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      // 保留原本筆記功能，但不自動觸發任何 API
-      setTimeout(() => {
-        $('wordCount').textContent = `${countWords(stripHtml($('editor').innerHTML))} 字`;
-      }, 0);
+  });
+
+  $('editor').addEventListener('paste', e => {
+    const text = e.clipboardData?.getData('text/plain') || '';
+    if (text.startsWith('~/image/')) {
+      e.preventDefault();
+      document.execCommand('insertHTML', false, `<div class="image-wrap"><img src="${escapeHtml(text)}" alt="image"></div>`);
+      state.dirty = true;
     }
   });
 
   document.querySelectorAll('.tool').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const cmd = btn.dataset.cmd;
-      if (cmd === 'save') return manualSave();
+      if (cmd === 'save') return saveCurrentNote();
       if (cmd === 'bold' || cmd === 'italic' || cmd === 'underline') {
         document.execCommand(cmd, false, null);
-        markDirty();
+        state.dirty = true;
         return;
       }
       insertBlock(cmd);
@@ -352,14 +497,19 @@ function bindEvents() {
 function init() {
   setTheme(state.theme);
   bindEvents();
-  initLocalNotes();
+  state.notes = loadLocalCache().map(ensureNoteShape);
+  if (!state.notes.length) {
+    state.notes = [ensureNoteShape({ title: 'Welcome', content: '先按 Google 登入，再按載入雲端。' })];
+  }
+  state.currentId = state.notes[0].id;
+  renderList();
+  renderCurrent();
 
   if (window.innerWidth <= 900) {
     state.mode = 'mobile';
     applyModeRules();
     $('status').textContent = '手機模式：read only + 搜尋';
-  } else {
-    state.mode = 'desktop';
-    applyModeRules();
   }
 }
+
+init();
