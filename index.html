@@ -1,16 +1,32 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Rhizome Notes - Cloud FAE Edition</title>
+    <title>Rhizome Notes - Cloud Edition</title>
     <link rel="stylesheet" href="style.css" />
-    <!-- Google SDK -->
+
+    <!--
+    ══════════════════════════════════════════════════
+    Google SDK 載入說明：
+      gsi/client  → Google Sign-In / OAuth 2.0 Token Client
+      api.js      → Google API Client (gapi)，呼叫 Drive REST API
+    兩者 async defer 非同步載入
+    app.js 內透過 gapiInited / gsiInited 雙旗標確認都就緒後才允許操作
+    ══════════════════════════════════════════════════
+    -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
 </head>
+
 <body data-theme="light">
-    <!-- 指令面板 (Command Palette ) -->
+
+    <!-- ══════════════════════════════════════════
+         指令面板 (Command Palette)
+         快捷鍵 ⌘K / Ctrl+K 開啟
+         data-action 由 app.js runCmdAction() 處理
+    ══════════════════════════════════════════ -->
     <div id="cmdPalette" class="cmd-overlay hidden">
         <div class="cmd-box">
             <div class="cmd-header">
@@ -19,101 +35,515 @@
                 <kbd class="cmd-esc">ESC</kbd>
             </div>
             <div id="cmdResults" class="cmd-results">
-                <!-- 由 JS 動態生成 -->
+                <div class="cmd-section-label">快速指令</div>
+                <div class="cmd-item" data-action="new">
+                    <span class="cmd-item-icon">📝</span> 新增筆記 <kbd>N</kbd>
+                </div>
+                <!--
+                    雲端版：action="open" → handleAuthClick()
+                    本地版原為「開啟工作區資料夾」，此處改為「連結 Google 雲端」
+                -->
+                <div class="cmd-item" data-action="open">
+                    <span class="cmd-item-icon">☁️</span> 連結 Google 雲端 <kbd>O</kbd>
+                </div>
+                <div class="cmd-item" data-action="theme">
+                    <span class="cmd-item-icon">🌙</span> 切換深色/淺色 <kbd>T</kbd>
+                </div>
+                <div class="cmd-item" data-action="search">
+                    <span class="cmd-item-icon">🔍</span> 全域搜尋 <kbd>/</kbd>
+                </div>
+                <div class="cmd-item" data-action="graph">
+                    <span class="cmd-item-icon">🕸️</span> 知識圖譜 <kbd>G</kbd>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 頂部導覽列 -->
+    <!-- ══════════════════════════════════════════
+         知識圖譜 Modal
+         openGraphModal() → drawGraph() 渲染 Canvas
+         節點可點擊 → switchNote(fileId)
+    ══════════════════════════════════════════ -->
+    <div id="graphModal" class="modal-overlay hidden">
+        <div class="modal-box graph-modal">
+            <div class="modal-header">
+                <h3>🕸️ 知識連結圖譜</h3>
+                <button id="closeGraph" class="modal-close">✕</button>
+            </div>
+            <!-- 寬高由 drawGraph() 依父容器動態設定 -->
+            <canvas id="graphCanvas"></canvas>
+            <div class="graph-hint">節點大小代表連結數量 · 點擊節點開啟筆記</div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         匯出 Modal
+         支援 Markdown / JSON / 純文字 / 複製剪貼簿
+         openExportModal() 顯示，doExport(format) 執行
+    ══════════════════════════════════════════ -->
+    <div id="exportModal" class="modal-overlay hidden">
+        <div class="modal-box export-modal">
+            <div class="modal-header">
+                <h3>匯出筆記</h3>
+                <button id="closeExport" class="modal-close">✕</button>
+            </div>
+            <div class="export-options">
+                <button class="export-btn" id="exportMd">📄 Markdown (.md)</button>
+                <button class="export-btn" id="exportJson">🗂️ JSON (.json)</button>
+                <button class="export-btn" id="exportTxt">📃 純文字 (.txt)</button>
+                <button class="export-btn" id="exportCopy">📋 複製到剪貼簿</button>
+            </div>
+            <!-- buildMarkdown() 前 600 字預覽 -->
+            <div id="exportPreview" class="export-preview"></div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         頂部導覽列 (Header)
+    ══════════════════════════════════════════ -->
     <header class="app-header">
         <div class="header-left">
-            <button id="btnSidebarToggle" class="icon-btn mobile-only" title="選單">☰</button>
+            <!-- 手機版 Hamburger：開啟 mobileDrawer -->
+            <button id="btnSidebarToggle" class="icon-btn mobile-only" title="選單">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+            </button>
             <div class="app-logo">
                 <div class="logo-mark">N</div>
                 <div class="app-name-group">
                     <span class="app-name">Rhizome Notes</span>
-                    <span class="app-version">v4.0 · Cloud</span>
+                    <span class="app-version">v5.0 · Cloud Edition</span>
                 </div>
             </div>
         </div>
 
+        <!-- 全域搜尋框（桌機版）
+             input 事件 → handleSearch()
+             ESC → 清空並隱藏結果
+             快捷鍵 / → focus -->
         <div class="header-center desktop-only">
             <div class="search-bar">
-                <span>🔍</span>
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                </svg>
                 <input id="topSearch" type="text" placeholder="搜尋全部筆記..." />
                 <kbd>/</kbd>
             </div>
         </div>
 
         <div class="header-right">
-            <button id="btnTheme" class="icon-btn" title="切換主題">🌓</button>
-            <button id="btnOpenFolder" class="btn-primary">☁️ 連結 Google 雲端</button>
-            <button id="btnLogout" class="icon-btn hidden" title="登出">✕</button>
+            <!-- 知識圖譜（桌機版）→ openGraphModal() -->
+            <button id="btnGraph" class="icon-btn desktop-only" title="知識圖譜">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+            </button>
+
+            <!-- 主題切換：toggleTheme()
+                 themeIconLight / themeIconDark 互斥顯示
+                 localStorage key: 'rhizome-theme' -->
+            <button id="btnTheme" class="icon-btn" title="切換主題">
+                <svg id="themeIconLight" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5" />
+                    <line x1="12" y1="1" x2="12" y2="3" />
+                    <line x1="12" y1="21" x2="12" y2="23" />
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                    <line x1="1" y1="12" x2="3" y2="12" />
+                    <line x1="21" y1="12" x2="23" y2="12" />
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+                <svg id="themeIconDark" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" class="hidden">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+            </button>
+
+            <!--
+            ☁️ 連結 Google 雲端 主按鈕
+            未登入 → 顯示「連結 Google 雲端」
+            已登入 → JS 動態改為「☁️ 雲端已連結」+ 背景綠色
+            點擊 → handleAuthClick() → tokenClient.requestAccessToken()
+            -->
+            <button id="btnOpenFolder" class="btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+                連結 Google 雲端
+            </button>
+
+            <!--
+            登出按鈕：初始 hidden
+            登入後 handleAuthResponse() → show()
+            點擊 → handleLogoutClick() → revokeToken + 重置所有狀態
+            -->
+            <button id="btnLogout" class="icon-btn hidden" title="登出 Google 帳戶">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+            </button>
+
+            <!-- 指令面板 ⌘K → openCmdPalette() -->
+            <button id="btnCommand" class="icon-btn" title="指令面板 ⌘K">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z" />
+                </svg>
+            </button>
         </div>
     </header>
 
+    <!-- ══════════════════════════════════════════
+         App Shell：三欄主體佈局
+         左側欄 | 編輯主區 | 右側面板
+    ══════════════════════════════════════════ -->
     <div class="app-shell">
-        <!-- 左側側邊欄 -->
-        <aside id="sidebar" class="sidebar">
+
+        <!-- ── 左側欄（桌機版）── -->
+        <aside id="sidebar" class="sidebar desktop-only">
             <div class="sidebar-top">
                 <div class="sidebar-section-label">
-                    工作區 <span id="syncStatus" class="sync-badge">未連結</span>
+                    工作區
+                    <!--
+                    同步狀態徽章
+                    未登入：「未連結」灰色
+                    已登入：「● 已連線」+ .synced class 綠色
+                    -->
+                    <span id="syncStatus" class="sync-badge">未連結</span>
                 </div>
+
+                <!--
+                操作按鈕區（初始 hidden，登入後顯示）
+                Note   → createNewNotePrompt()
+                Folder → createNewFolderPrompt()（Drive API 建立資料夾）
+                Relink → smartRefresh()（重新下載 Drive 最新資料）
+                -->
                 <div id="sidebarActions" class="sidebar-actions hidden">
-                    <button id="btnNewNote" class="btn-primary" style="width: 100%; margin-bottom: 10px;">+ 新增筆記</button>
-                    <button id="btnRefresh" class="icon-btn">🔄 同步雲端</button>
+                    <button id="btnNewNote" class="btn-sidebar-action btn-new">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2.5">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        Note
+                    </button>
+                    <button id="btnNewFolder" class="btn-sidebar-action" title="在 Google Drive 新增資料夾">
+                        📁 Folder
+                    </button>
+                    <button id="btnRefresh" class="btn-sidebar-action btn-refresh">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10" />
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                        </svg>
+                        Relink
+                    </button>
                 </div>
             </div>
+
+            <!-- 筆記目錄樹
+                 renderTreeUI() 動態渲染
+                 支援資料夾 ▼/▶ 展開收合
+                 支援拖曳移動（initDragAndDrop）-->
             <div class="sidebar-tree-wrap">
                 <div class="sidebar-section-label">筆記目錄</div>
                 <ul id="noteTree" class="note-tree">
-                    <!-- 筆記列表 -->
+                    <!-- 登入前佔位符 -->
+                    <li class="tree-empty">
+                        <div class="tree-empty-icon">☁️</div>
+                        <div>請連結 Google 雲端<br>以載入筆記</div>
+                    </li>
                 </ul>
+            </div>
+
+            <!--
+            反向連結面板（初始 hidden）
+            computeAndShowBacklinks(fileId) 控制顯隱
+            掃描所有筆記中包含 [[當前標題]] 的引用
+            -->
+            <div id="backlinksPanel" class="backlinks-panel hidden">
+                <div class="sidebar-section-label">反向連結</div>
+                <ul id="backlinksList" class="backlinks-list"></ul>
             </div>
         </aside>
 
-        <!-- 主要編輯區 -->
+        <!-- ── 編輯器主區域 ── -->
         <main class="editor-main">
-            <!-- 編輯工具列 (手機端會自動隱藏) -->
+
+            <!--
+            格式化工具列（初始 hidden）
+            switchNote() 後顯示；手機唯讀模式下隱藏
+            ─────────────────────────────
+            data-format → document.execCommand()
+            data-cmd    → applyBlockCommand()
+            -->
             <div id="editorToolbar" class="editor-toolbar hidden">
-                <button class="toolbar-btn" data-cmd="bold"><b>B</b></button>
-                <button class="toolbar-btn" data-cmd="italic"><i>I</i></button>
-                <button class="toolbar-btn" data-cmd="h1">H1</button>
-                <button class="toolbar-btn" data-cmd="h2">H2</button>
-                <button class="toolbar-btn" data-cmd="ul">清單</button>
+                <!-- 文字格式 -->
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-format="bold" title="粗體 Ctrl+B"><strong>B</strong></button>
+                    <button class="toolbar-btn" data-format="italic" title="斜體 Ctrl+I"><em>I</em></button>
+                    <button class="toolbar-btn" data-format="underline" title="底線 Ctrl+U"><u>U</u></button>
+                    <button class="toolbar-btn" data-format="strikeThrough" title="刪除線"><s>S</s></button>
+                </div>
+                <div class="toolbar-divider"></div>
+                <!-- 標題層級 -->
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-cmd="h1" title="標題 1">H1</button>
+                    <button class="toolbar-btn" data-cmd="h2" title="標題 2">H2</button>
+                    <button class="toolbar-btn" data-cmd="h3" title="標題 3">H3</button>
+                </div>
+                <div class="toolbar-divider"></div>
+                <!-- 行內元素 -->
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-cmd="code" title="行內代碼">&lt;/&gt;</button>
+                    <button class="toolbar-btn" data-cmd="quote" title="引用">❝</button>
+                    <button class="toolbar-btn" data-cmd="link" title="插入連結">🔗</button>
+                    <button class="toolbar-btn" data-cmd="tag" title="插入標籤">#</button>
+                </div>
+                <div class="toolbar-divider"></div>
+                <!-- 區塊元素 -->
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-cmd="table" title="插入表格">⊞</button>
+                    <button class="toolbar-btn" data-cmd="hr" title="水平分隔線">—</button>
+                    <button class="toolbar-btn" data-cmd="todo" title="新增待辦事項">☐</button>
+                </div>
+                <div class="toolbar-divider"></div>
+                <!-- 標記與顏色 -->
+                <div class="toolbar-group">
+                    <button class="toolbar-btn" data-cmd="highlight" title="螢光筆">🖍️</button>
+                    <!--
+                    文字顏色：overflow+縮放技巧使 input[color] 填滿容器
+                    input 事件 → execCommand('foreColor', ...) → scheduleSave()
+                    -->
+                    <div style="display:flex;align-items:center;overflow:hidden;
+                                width:28px;height:28px;border-radius:4px;margin-left:2px;">
+                        <input type="color" id="textColorPicker" title="文字顏色"
+                            style="padding:0;width:150%;height:150%;margin:-25%;
+                                   cursor:pointer;border:none;background:transparent;">
+                    </div>
+                </div>
             </div>
 
+            <!--
+            筆記標頭（初始 hidden）
+            switchNote() 後顯示
+            標題 contenteditable 由 switchNote() 動態設定：
+              桌機 true / 手機 false（唯讀）
+            -->
             <div id="noteHeader" class="note-header hidden">
-                <div id="noteTitle" class="note-title" contenteditable="true">未選取筆記</div>
+                <div class="note-header-top">
+                    <div class="note-title-wrap">
+                        <!-- blur → renameCurrentNote() → fileMeta 更新 + scheduleSave() -->
+                        <div id="noteTitle" class="note-title">未選取筆記</div>
+                        <!-- 顯示 Drive fileId（供除錯）-->
+                        <div id="noteMeta" class="note-meta">—</div>
+                    </div>
+                    <div class="note-header-actions">
+                        <!-- 匯出 → openExportModal() -->
+                        <button id="btnExport" class="icon-btn" title="匯出筆記">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                        </button>
+                        <!-- 刪除 → deleteCurrentNote()（confirm 二次確認）-->
+                        <button id="btnDelete" class="icon-btn danger" title="刪除此筆記">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!--
+                標籤列
+                renderTags() 渲染 .tag-chip
+                btnAddTag → promptAddTag() → fileMeta.tags + scheduleSave()
+                -->
+                <div id="tagsBar" class="tags-bar">
+                    <span id="tagsList" class="tags-list"></span>
+                    <button id="btnAddTag" class="tag-add-btn" title="新增標籤">+ 標籤</button>
+                </div>
+
+                <!--
+                統計列（updateStats() 更新）
+                lastSaved 狀態：
+                  「未儲存…」→ scheduleSave() 觸發
+                  「同步中…」→ uploadNotesToDrive() 執行中
+                  「已同步 HH:MM」→ 上傳完成
+                -->
                 <div class="note-stats">
+                    <span id="wordCount">0 字</span>
+                    <span id="blockCount">0 個區塊</span>
                     <span id="lastSaved">未儲存</span>
                 </div>
             </div>
 
-            <div id="blocksContainer" class="blocks-container hidden">
-                <!-- 內容區塊 -->
-            </div>
+            <!--
+            區塊容器（核心編輯區，初始 hidden）
+            renderBlocks() → renderBlock() 動態填充
+            每個 .block-row 結構：
+              .block-drag（⦙⦙ 拖曳把手）
+              .block-fold-toggle（▼/▶ 摺疊）
+              .block-bullet（• 項目符號，點擊循環切換標題層級）
+              .block-editor（contenteditable）
+            雲端版圖片 block：driveFileId → getDriveImageUrl() 載入
+            -->
+            <div id="blocksContainer" class="blocks-container hidden"></div>
+
+            <!--
+            全域搜尋結果（初始 hidden）
+            handleSearch() 有輸入時取代 blocksContainer 顯示
+            點擊結果 → switchNote(fid)
+            -->
+            <div id="searchResults" class="search-results hidden"></div>
         </main>
 
-        <!-- 右側面板 (桌面端) -->
+        <!-- ── 右側面板（桌機版）── -->
         <aside id="rightPanel" class="right-panel desktop-only">
+            <!--
+            三個 Tab：說明 / 大綱 / 屬性
+            panel-tab click → class active 切換
+            對應 panelHelp / panelOutline / panelProps
+            -->
             <div class="right-panel-tabs">
-                <button class="panel-tab active">說明</button>
+                <button class="panel-tab active" data-panel="help">說明</button>
+                <button class="panel-tab" data-panel="outline">大綱</button>
+                <button class="panel-tab" data-panel="props">屬性</button>
             </div>
-            <div class="panel-content active" style="padding: 20px;">
-                <h4>快捷鍵</h4>
-                <p>⌘K : 指令面板</p>
-                <p>/ : 快速搜尋</p>
-                <hr style="margin: 10px 0;">
-                <h4>FAE 專業提示</h4>
-                <p>確保 P2P 替代料比對正確。</p>
+
+            <!-- 說明面板：靜態內容 -->
+            <div id="panelHelp" class="panel-content active">
+                <div class="help-section">
+                    <div class="help-title">鍵盤快捷鍵</div>
+                    <div class="help-item"><kbd>Enter</kbd> 新增區塊</div>
+                    <div class="help-item"><kbd>Tab</kbd> 縮排</div>
+                    <div class="help-item"><kbd>Shift+Tab</kbd> 取消縮排</div>
+                    <div class="help-item"><kbd>Backspace</kbd> 刪除空區塊</div>
+                    <div class="help-item"><kbd>⌘K</kbd> 指令面板</div>
+                    <div class="help-item"><kbd>/</kbd> 快速搜尋</div>
+                    <div class="help-item"><kbd>Alt+↑↓</kbd> 移動區塊</div>
+                </div>
+                <div class="help-section">
+                    <div class="help-title">Markdown 支援</div>
+                    <div class="help-item"><code>#</code> → H1 標題</div>
+                    <div class="help-item"><code>**粗體**</code></div>
+                    <div class="help-item"><code>*斜體*</code></div>
+                    <div class="help-item"><code>`代碼`</code></div>
+                    <div class="help-item"><code>[[筆記名]]</code> 雙向連結</div>
+                    <div class="help-item"><code>- [ ]</code> 待辦事項</div>
+                </div>
+                <div class="help-section">
+                    <div class="help-title">區塊操作</div>
+                    <div class="help-item">⦙⦙ 拖曳排序</div>
+                    <div class="help-item">▼ 摺疊子區塊</div>
+                    <div class="help-item">貼上圖片 → 自動上傳 Drive</div>
+                    <div class="help-item">貼上 Markdown 自動轉換</div>
+                    <div class="help-item"><code>/bl</code> + Enter 插入反向連結</div>
+                </div>
+                <div class="help-section">
+                    <div class="help-title">雲端版架構</div>
+                    <div class="help-item">資料 → Drive/rhizome_notes_data.json</div>
+                    <div class="help-item">圖片 → Drive/image/ 資料夾</div>
+                    <div class="help-item">自動 800ms debounce 儲存</div>
+                    <div class="help-item">手機版：唯讀 + 全文搜尋</div>
+                </div>
+            </div>
+
+            <!--
+            大綱面板
+            updateOutline() 掃描 h1/h2/h3 動態渲染
+            點擊 outline-item → focusBlock(i)
+            -->
+            <div id="panelOutline" class="panel-content">
+                <div id="outlineList" class="outline-list">
+                    <div class="outline-empty">此筆記無標題結構</div>
+                </div>
+            </div>
+
+            <!--
+            屬性面板
+            updatePropsPanel() 在 switchNote() 時更新
+            updateStats() 更新字數/區塊數
+            -->
+            <div id="panelProps" class="panel-content">
+                <div id="propsContent" class="props-list">
+                    <div class="prop-row">
+                        <span class="prop-key">建立時間</span>
+                        <span id="propCreated" class="prop-val">—</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-key">修改時間</span>
+                        <span id="propModified" class="prop-val">—</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-key">字數</span>
+                        <span id="propWords" class="prop-val">—</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-key">區塊數</span>
+                        <span id="propBlocks" class="prop-val">—</span>
+                    </div>
+                    <div class="prop-row">
+                        <span class="prop-key">連結數</span>
+                        <span id="propLinks" class="prop-val">—</span>
+                    </div>
+                </div>
             </div>
         </aside>
     </div>
 
-    <!-- Toast 通知 -->
+    <!-- ══════════════════════════════════════════
+         手機版側拉選單 (Mobile Drawer)
+         toggleMobileDrawer(true/false) 控制
+         noteTreeMobile 與 noteTree 同步渲染
+    ══════════════════════════════════════════ -->
+    <div id="mobileDrawer" class="mobile-drawer hidden">
+        <div id="drawerMask" class="drawer-mask"></div>
+        <div class="drawer-panel">
+            <div class="drawer-header">
+                <span class="drawer-title">筆記目錄</span>
+                <button id="closeDrawer" class="icon-btn">✕</button>
+            </div>
+            <!-- 登入後顯示（handleAuthResponse → drawerActions.style.display = ''）-->
+            <div class="drawer-actions" id="drawerActions" style="display:none">
+                <button id="btnNewNoteMobile" class="btn-sidebar-action btn-new" style="width:100%">
+                    + 新增筆記
+                </button>
+            </div>
+            <!-- 手機版筆記樹，renderTreeUI() 同步渲染 -->
+            <ul id="noteTreeMobile" class="note-tree"></ul>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         Toast 通知
+         toast(msg, duration) 顯示，duration ms 後自動隱藏
+    ══════════════════════════════════════════ -->
     <div id="toast" class="toast hidden"></div>
 
+    <!--
+    app.js 放最末確保 DOM 就緒
+    Google SDK async defer 已開始載入
+    app.js 內 window.onload 確認 gapiInited && gsiInited 雙旗標後才啟用 UI
+    -->
     <script src="app.js"></script>
 </body>
+
 </html>
