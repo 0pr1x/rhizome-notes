@@ -1,6 +1,6 @@
 'use strict';
 
-const CLIENT_ID = 'PASTE_YOUR_GOOGLE_OAUTH_CLIENT_ID';
+const CLIENT_ID = '249300683470-vtgnnd73jvhe1ku7ckoftasrn8tesmfe.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly';
 const APP_FOLDER = 'CloudNotes';
 const NOTES_FOLDER = 'notes';
