@@ -166,7 +166,88 @@ function bindGlobalEvents() {
 
     // Global keyboard shortcuts
     document.addEventListener('keydown', handleGlobalShortcut);
-
+    // 🚀 啟動 Wiki-link 雙軌互動邏輯
+   document.addEventListener('click', async (e) => {
+       // 檢查點擊的是不是 Wiki-link
+       const wikiLink = e.target.closest('.wiki-link');
+       if (!wikiLink) return;
+   
+       e.preventDefault();
+       e.stopPropagation();
+   
+       const noteName = wikiLink.getAttribute('data-note');
+       if (!noteName) return;
+   
+       // 判斷是否按下 Ctrl (Windows/Linux) 或 Meta (Mac 的 Command 鍵)
+       const isJumpKey = e.ctrlKey || e.metaKey;
+   
+       if (isJumpKey) {
+           // ----------------------------------------------------
+           // 🎯 模式 A：Ctrl/Cmd + 點擊 -> 直接跳轉至該筆記
+           // ----------------------------------------------------
+           // 在目前的 database 尋找是否有對應標題的 fileId
+           let targetFileId = Object.keys(database).find(id => {
+               return (fileMeta[id] && fileMeta[id].title === noteName) || id.includes(noteName);
+           });
+   
+           if (targetFileId) {
+               switchNote(targetFileId);
+               toast(`➡️ 已跳轉至筆記：${noteName}`);
+           } else {
+               // 筆記不存在，提示建立
+               if (confirm(`筆記「${noteName}」尚未存在，是否立刻建立新筆記？`)) {
+                   try {
+                       let newId;
+                       if (isCloudMode) {
+                           // 雲端模式：透過 RhizomeDrive 建立
+                           const defaultContent = JSON.stringify({
+                               meta: { title: noteName, created: Date.now(), modified: Date.now() },
+                               blocks: [{ id: uid(), content: noteName, indent: 0 }]
+                           }, null, 2);
+                           
+                           await window.RhizomeDrive.createNote(noteName + '.json', defaultContent);
+                           newId = noteName + '.json';
+                       } else {
+                           // 本地模式
+                           newId = noteName;
+                       }
+                       
+                       // 重新整理側邊欄目錄並跳轉
+                       if (typeof buildTreeFromDrive === 'function') await buildTreeFromDrive(); 
+                       if (typeof renderSidebar === 'function') renderSidebar();
+                       
+                       switchNote(newId);
+                       toast(`✨ 已成功建立並跳轉至：${noteName}`);
+                   } catch (err) {
+                       console.error(err);
+                       toast('❌ 建立 Wiki 筆記失敗');
+                   }
+               }
+           }
+       } else {
+           // ----------------------------------------------------
+           // 🔍 模式 B：一般點擊 -> 填入搜尋列並觸發全域搜尋
+           // ----------------------------------------------------
+           // 優先尋找側邊欄搜尋框，若無則尋找命令面板搜尋框
+           const searchInput = document.querySelector('.sidebar-search input') || document.getElementById('cmdInput');
+           
+           if (searchInput) {
+               searchInput.value = noteName; // 或者填入 `[[${noteName}]]` 進行精準匹配
+               
+               // 💡 關鍵：必須手動觸發 input 事件，才能讓原本綁定在搜尋框上的監聽器開跑
+               searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+               searchInput.focus();
+               
+               // 如果你有獨立的全域搜尋啟動函式，也可以在這裡直接呼叫，例如：
+               // if (typeof triggerGlobalSearch === 'function') triggerGlobalSearch(noteName);
+               
+               toast(`🔍 已將「${noteName}」帶入全域搜尋`);
+           } else {
+               toast('❌ 找不到搜尋輸入欄位');
+           }
+       }
+   });
+ 
     // Click outside to close modals
     $('cmdPalette').addEventListener('click', e => { if (e.target === $('cmdPalette')) closeCmdPalette(); });
     $('graphModal').addEventListener('click', e => { if (e.target === $('graphModal')) hide($('graphModal')); });
@@ -905,11 +986,11 @@ function parseMarkdownToHtml(md) {
             const cells = trimmed.split('|').map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - 1);
             const tag = out.length === 0 || !inTable ? 'th' : 'td';
             if (tableBuffer.includes('<thead>') && !tableBuffer.includes('</thead>')) {
-                cells.forEach(c => tableBuffer += `<th>${inlineFormat(c)}</th>`);
+                cells.forEach(c => tableBuffer += `<th>${(c)}</th>`);
                 tableBuffer += '</tr></thead><tbody>';
             } else {
                 tableBuffer += '<tr>';
-                cells.forEach(c => tableBuffer += `<td>${inlineFormat(c)}</td>`);
+                cells.forEach(c => tableBuffer += `<td>${(c)}</td>`);
                 tableBuffer += '</tr>';
             }
             continue;
@@ -920,17 +1001,17 @@ function parseMarkdownToHtml(md) {
         }
 
         if (trimmed === '---' || trimmed === '***' || trimmed === '___') { out.push('<hr>'); continue; }
-        if (trimmed.startsWith('# ')) { out.push(`<h1>${inlineFormat(trimmed.slice(2))}</h1>`); continue; }
-        if (trimmed.startsWith('## ')) { out.push(`<h2>${inlineFormat(trimmed.slice(3))}</h2>`); continue; }
-        if (trimmed.startsWith('### ')) { out.push(`<h3>${inlineFormat(trimmed.slice(4))}</h3>`); continue; }
-        if (trimmed.startsWith('> ')) { out.push(`<blockquote>${inlineFormat(trimmed.slice(2))}</blockquote>`); continue; }
+        if (trimmed.startsWith('# ')) { out.push(`<h1>${(trimmed.slice(2))}</h1>`); continue; }
+        if (trimmed.startsWith('## ')) { out.push(`<h2>${(trimmed.slice(3))}</h2>`); continue; }
+        if (trimmed.startsWith('### ')) { out.push(`<h3>${(trimmed.slice(4))}</h3>`); continue; }
+        if (trimmed.startsWith('> ')) { out.push(`<blockquote>${(trimmed.slice(2))}</blockquote>`); continue; }
         if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('* [ ] ')) {
-            out.push(`<span class="todo-item">☐ ${inlineFormat(trimmed.slice(6))}</span>`); continue;
+            out.push(`<span class="todo-item">☐ ${(trimmed.slice(6))}</span>`); continue;
         }
         if (trimmed.startsWith('- [x] ') || trimmed.startsWith('* [x] ')) {
-            out.push(`<span class="todo-item done">☑ ${inlineFormat(trimmed.slice(6))}</span>`); continue;
+            out.push(`<span class="todo-item done">☑ ${(trimmed.slice(6))}</span>`); continue;
         }
-        if (trimmed) out.push(inlineFormat(trimmed));
+        if (trimmed) out.push((trimmed));
         else if (out.length) out.push('<br>');
     }
 
@@ -939,15 +1020,22 @@ function parseMarkdownToHtml(md) {
 }
 
 function inlineFormat(text) {
-    return text
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/~~(.+?)~~/g, '<s>$1</s>')
-        .replace(/`(.+?)`/g, '<code>$1</code>')
-        .replace(/\[\[(.+?)\]\]/g, (_, p) => `<span class="wiki-link" data-target="${p}" onclick="handleWikiClick(event, '${p.replace(/'/g, "\\'")}')">${p}</span>`)
-        .replace(/(^|\s)(#[\w\u4e00-\u9fa5]+)/g, '$1<span class="inline-tag" onclick="searchTag(\'$2\')">$2</span>')
-        .replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    if (!text) return '';
+    
+    // 1. 先做基本的 HTML 轉義，防止使用者輸入的 < > 破壞 DOM 結構
+    let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    
+    // 2. 🚀 核心：匹配 [[筆記名]] 並轉換為具備超連結特性的 Wiki-link 節點
+    // 加上 contenteditable="false" 可以防止使用者在編輯時不小心刪到標籤內部結構
+    html = html.replace(/\[\[(.*?)\]\]/g, (match, noteName) => {
+        const trimmed = noteName.trim();
+        return `<span class="wiki-link" data-note="${trimmed}" contenteditable="false">[[${trimmed}]]</span>`;
+    });
+    
+    return html;
 }
 
 function escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
