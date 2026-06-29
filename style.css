@@ -1725,3 +1725,34 @@ kbd {
     outline: 1px dashed var(--accent);
     border-radius: var(--radius-sm);
 }
+
+/* ========================================================
+   Wiki-link 超連結視覺樣式 
+   ======================================================== */
+.wiki-link {
+    color: var(--accent, #4f46e5); /* 使用主題的 accent 顏色 */
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1.5px;
+    cursor: pointer;
+    font-weight: 500;
+    padding: 0 2px;
+    margin: 0 1px;
+    border-radius: var(--radius-sm, 4px);
+    display: inline-block;
+    transition: all 0.15s ease;
+}
+
+/* 滑鼠懸停效果：亮起背景，提示使用者可以互動 */
+.wiki-link:hover {
+    color: var(--surface, #ffffff);
+    background-color: var(--accent, #4f46e5);
+    text-decoration: none;
+    box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+}
+
+/* 當按住 Ctrl 或 Cmd 鍵時的提示樣式（可選，增加極客感） */
+body:has-key-ctrl .wiki-link, 
+body:has-key-meta .wiki-link {
+    cursor: revert; /* 提示使用者這時候點擊功能不同 */
+}
