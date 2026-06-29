@@ -1,98 +1,71 @@
 /* =========================================================
-   Rhizome Notes v5.0 — Cloud Edition  Style System
-   Base: 單機版完整移植
-   新增: 雲端版專屬樣式（sync badge、mobile readonly、
-         Drive image block、cloud hint 等）
+   Nexus Notes v4.0  — Style System
+   Design: Clean productivity app, subtle depth, mobile-first
    ========================================================= */
 
-/* ─────────────────────────────────────────────────────────
-   Design Tokens（亮色模式預設值）
-   ───────────────────────────────────────────────────────── */
+/* ─── Design Tokens ─── */
 :root {
-    /* 背景與表面 */
-    --bg:           #f5f5f4;
-    --surface:      #ffffff;
-    --surface2:     #f9f9f8;
-
-    /* 邊框 */
-    --border:       #e7e5e4;
-    --border2:      #d6d3d1;
-
-    /* 文字層次 */
-    --text:         #1c1917;
-    --text2:        #57534e;
-    --text3:        #a8a29e;
-
-    /* 主色 Indigo */
-    --accent:       #4f46e5;
-    --accent-soft:  #eef2ff;
-    --accent-dim:   #c7d2fe;
-
-    /* 語意色 */
-    --danger:       #dc2626;
-    --danger-soft:  #fef2f2;
-    --success:      #16a34a;
-    --warn:         #d97706;
-
-    /* 程式碼 */
-    --code-bg:      #f5f0ff;
-    --code-text:    #7c3aed;
-
-    /* 圓角 */
-    --radius-sm:    6px;
-    --radius:       10px;
-    --radius-lg:    16px;
-
-    /* 陰影 */
-    --shadow-sm:    0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
-    --shadow:       0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
-    --shadow-lg:    0 20px 40px rgba(0,0,0,.12);
-
-    /* 版面尺寸 */
-    --header-h:     56px;
-    --sidebar-w:    260px;
-    --rpanel-w:     220px;
-
-    /* 字型 */
-    --font:         'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-    --font-mono:    'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-
-    /* 動畫 */
-    --transition:   150ms ease;
+    --bg: #f5f5f4;
+    --surface: #ffffff;
+    --surface2: #f9f9f8;
+    --border: #e7e5e4;
+    --border2: #d6d3d1;
+    --text: #1c1917;
+    --text2: #57534e;
+    --text3: #a8a29e;
+    --accent: #4f46e5;
+    --accent-soft: #eef2ff;
+    --accent-dim: #c7d2fe;
+    --danger: #dc2626;
+    --danger-soft: #fef2f2;
+    --success: #16a34a;
+    --warn: #d97706;
+    --code-bg: #f5f0ff;
+    --code-text: #7c3aed;
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 16px;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .04);
+    --shadow: 0 4px 12px rgba(0, 0, 0, .08), 0 2px 4px rgba(0, 0, 0, .04);
+    --shadow-lg: 0 20px 40px rgba(0, 0, 0, .12);
+    --header-h: 56px;
+    --sidebar-w: 260px;
+    --rpanel-w: 220px;
+    --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    --transition: 150ms ease;
 }
 
-/* ─────────────────────────────────────────────────────────
-   暗色模式 Token 覆寫
-   body[data-theme="dark"] 由 toggleTheme() / loadTheme() 切換
-   ───────────────────────────────────────────────────────── */
 [data-theme="dark"] {
-    --bg:           #0f0f0e;
-    --surface:      #1c1b1a;
-    --surface2:     #242322;
-    --border:       #2c2b29;
-    --border2:      #3a3937;
-    --text:         #e7e5e4;
-    --text2:        #a8a29e;
-    --text3:        #57534e;
-    --accent:       #818cf8;
-    --accent-soft:  #1e1b4b;
-    --accent-dim:   #3730a3;
-    --danger:       #f87171;
-    --danger-soft:  #1a0000;
-    --code-bg:      #1e1a2e;
-    --code-text:    #a78bfa;
+    --bg: #0f0f0e;
+    --surface: #1c1b1a;
+    --surface2: #242322;
+    --border: #2c2b29;
+    --border2: #3a3937;
+    --text: #e7e5e4;
+    --text2: #a8a29e;
+    --text3: #57534e;
+    --accent: #818cf8;
+    --accent-soft: #1e1b4b;
+    --accent-dim: #3730a3;
+    --danger: #f87171;
+    --danger-soft: #1a0000;
+    --code-bg: #1e1a2e;
+    --code-text: #a78bfa;
 }
 
-/* ─────────────────────────────────────────────────────────
-   Reset & Base
-   ───────────────────────────────────────────────────────── */
-*, *::before, *::after {
+/* ─── Reset & Base ─── */
+*,
+*::before,
+*::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
-html { height: 100%; }
+html {
+    height: 100%;
+}
 
 body {
     font-family: var(--font);
@@ -103,18 +76,30 @@ body {
     flex-direction: column;
     background: var(--bg);
     color: var(--text);
-    /* 鎖定捲動：整體 layout 不捲，各區域自行處理 overflow */
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
 }
 
-/* 美化 Scrollbar */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
 
-/* KBD 鍵盤符號 */
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border2);
+    border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text3);
+}
+
+/* ─── Typography helpers ─── */
 kbd {
     display: inline-block;
     padding: 1px 5px;
@@ -126,26 +111,22 @@ kbd {
     color: var(--text2);
 }
 
-/* ─────────────────────────────────────────────────────────
-   Responsive Utility Classes
-   .desktop-only → 手機隱藏（≤768px）
-   .mobile-only  → 桌機隱藏（≥769px）
-   ───────────────────────────────────────────────────────── */
+/* ─── Responsive Utilities ─── */
 @media (max-width: 768px) {
-    .desktop-only { display: none !important; }
+    .desktop-only {
+        display: none !important;
+    }
 }
+
 @media (min-width: 769px) {
-    .mobile-only { display: none !important; }
+    .mobile-only {
+        display: none !important;
+    }
 }
 
-/* 通用隱藏 class（JS 控制）*/
-.hidden { display: none !important; }
-
-
-/* =========================================================
-   HEADER（頂部導覽列）
-   高度由 --header-h 統一控制
-   ========================================================= */
+/* ========================================================
+   HEADER
+   ======================================================== */
 .app-header {
     height: var(--header-h);
     flex-shrink: 0;
@@ -178,7 +159,6 @@ kbd {
     flex-shrink: 0;
 }
 
-/* App Logo */
 .app-logo {
     display: flex;
     align-items: center;
@@ -188,7 +168,6 @@ kbd {
 .logo-mark {
     width: 32px;
     height: 32px;
-    /* 漸層與單機版一致 */
     background: linear-gradient(135deg, var(--accent), #7c3aed);
     border-radius: var(--radius-sm);
     display: flex;
@@ -213,7 +192,6 @@ kbd {
     margin-top: -2px;
 }
 
-/* 全域搜尋框 */
 .search-bar {
     display: flex;
     align-items: center;
@@ -231,7 +209,10 @@ kbd {
     box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.search-icon { color: var(--text3); flex-shrink: 0; }
+.search-icon {
+    color: var(--text3);
+    flex-shrink: 0;
+}
 
 .search-bar input {
     flex: 1;
@@ -242,10 +223,15 @@ kbd {
     min-width: 0;
 }
 
-.search-bar input:focus { outline: none; }
-.search-bar input::placeholder { color: var(--text3); }
+.search-bar input:focus {
+    outline: none;
+}
 
-/* ── 按鈕元件 ── */
+.search-bar input::placeholder {
+    color: var(--text3);
+}
+
+/* Buttons */
 .icon-btn {
     width: 34px;
     height: 34px;
@@ -257,8 +243,7 @@ kbd {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background var(--transition), color var(--transition),
-                border-color var(--transition);
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
     flex-shrink: 0;
 }
 
@@ -268,17 +253,16 @@ kbd {
     border-color: var(--border2);
 }
 
-/* 危險按鈕 hover（刪除筆記）*/
 .icon-btn.danger:hover {
     background: var(--danger-soft);
     color: var(--danger);
     border-color: var(--danger);
 }
 
-/*
-  主要行動按鈕（連結 Google 雲端）
-  登入後 JS 動態改背景色為 #15803d
-*/
+.icon-btn.hidden {
+    display: none;
+}
+
 .btn-primary {
     display: flex;
     align-items: center;
@@ -296,10 +280,57 @@ kbd {
     white-space: nowrap;
 }
 
-.btn-primary:hover { opacity: .9; }
-.btn-primary:active { transform: scale(.98); }
+.btn-primary:hover {
+    opacity: .9;
+}
 
-/* 大型按鈕（歡迎畫面 CTA）*/
+.btn-primary:active {
+    transform: scale(.98);
+}
+
+.btn-save {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    height: 34px;
+    background: var(--surface2);
+    color: var(--text2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+}
+
+.btn-save:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.btn-save:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.btn-save.btn-save-dirty {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.btn-save.btn-save-dirty:hover:not(:disabled) {
+    opacity: 0.92;
+}
+
+.note-stats .unsaved {
+    color: var(--warn);
+    font-weight: 600;
+}
+
 .btn-large {
     height: 44px;
     padding: 0 24px;
@@ -307,10 +338,9 @@ kbd {
     border-radius: var(--radius);
 }
 
-
-/* =========================================================
-   APP SHELL（三欄主體佈局）
-   ========================================================= */
+/* ========================================================
+   APP SHELL
+   ======================================================== */
 .app-shell {
     flex: 1;
     display: flex;
@@ -318,10 +348,9 @@ kbd {
     min-height: 0;
 }
 
-
-/* =========================================================
-   SIDEBAR（左側欄）
-   ========================================================= */
+/* ========================================================
+   SIDEBAR
+   ======================================================== */
 .sidebar {
     width: var(--sidebar-w);
     flex-shrink: 0;
@@ -337,7 +366,6 @@ kbd {
     flex-shrink: 0;
 }
 
-/* 區段標籤（小大寫標題）*/
 .sidebar-section-label {
     font-size: 10.5px;
     font-weight: 600;
@@ -351,10 +379,6 @@ kbd {
     padding: 0 4px;
 }
 
-/*
-  同步狀態徽章（#syncStatus）
-  狀態：未連結（預設）/ .synced 已連線（綠色）
-*/
 .sync-badge {
     font-size: 10px;
     font-weight: 500;
@@ -367,21 +391,18 @@ kbd {
     color: var(--text3);
 }
 
-/* 已連線：亮色 */
 .sync-badge.synced {
     background: #dcfce7;
     color: #16a34a;
     border-color: #bbf7d0;
 }
 
-/* 已連線：暗色 */
 [data-theme="dark"] .sync-badge.synced {
     background: #14532d;
     color: #4ade80;
     border-color: #166534;
 }
 
-/* 側欄三按鈕（Note / Folder / Relink）*/
 .sidebar-actions {
     display: flex;
     gap: 6px;
@@ -405,7 +426,6 @@ kbd {
     transition: all var(--transition);
 }
 
-/* Note 按鈕：藍色調 */
 .btn-new {
     background: var(--accent-soft);
     border-color: var(--accent-dim);
@@ -418,13 +438,11 @@ kbd {
     border-color: var(--accent);
 }
 
-/* Relink 按鈕 hover */
 .btn-refresh:hover {
     background: var(--surface2);
     color: var(--text);
 }
 
-/* 筆記目錄樹區域 */
 .sidebar-tree-wrap {
     flex: 1;
     overflow-y: auto;
@@ -432,8 +450,10 @@ kbd {
     min-height: 0;
 }
 
-/* ── 筆記樹 ── */
-.note-tree { list-style: none; }
+/* ─── Note Tree ─── */
+.note-tree {
+    list-style: none;
+}
 
 .note-tree ul {
     list-style: none;
@@ -441,7 +461,6 @@ kbd {
     margin-top: 2px;
 }
 
-/* 目錄樹空白佔位符（登入前 / 無筆記）*/
 .tree-empty {
     text-align: center;
     color: var(--text3);
@@ -455,7 +474,6 @@ kbd {
     margin-bottom: 8px;
 }
 
-/* 資料夾行 */
 .tree-dir {
     display: flex;
     align-items: center;
@@ -469,14 +487,15 @@ kbd {
     transition: background var(--transition);
 }
 
-.tree-dir:hover { background: var(--surface2); }
+.tree-dir:hover {
+    background: var(--surface2);
+}
 
 .tree-dir-icon {
     font-size: 11px;
     color: var(--text3);
 }
 
-/* 筆記檔案按鈕 */
 .tree-file-btn {
     display: flex;
     align-items: center;
@@ -499,7 +518,6 @@ kbd {
     color: var(--text);
 }
 
-/* 當前選中的筆記 */
 .tree-file-btn.active {
     background: var(--accent-soft);
     color: var(--accent);
@@ -513,7 +531,6 @@ kbd {
     text-overflow: ellipsis;
 }
 
-/* 未儲存變更的小藍點指示器 */
 .tree-file-dot {
     width: 5px;
     height: 5px;
@@ -522,16 +539,15 @@ kbd {
     flex-shrink: 0;
 }
 
-/* ── 反向連結面板 ──
-   computeAndShowBacklinks() 控制 hidden class
-   顯示有 [[雙向連結]] 指向當前筆記的來源
-*/
+/* ─── Backlinks ─── */
 .backlinks-panel {
     padding: 8px 12px;
     border-top: 1px solid var(--border);
 }
 
-.backlinks-list { list-style: none; }
+.backlinks-list {
+    list-style: none;
+}
 
 .backlink-item {
     font-size: 11.5px;
@@ -542,12 +558,13 @@ kbd {
     transition: background var(--transition);
 }
 
-.backlink-item:hover { background: var(--accent-soft); }
+.backlink-item:hover {
+    background: var(--accent-soft);
+}
 
-
-/* =========================================================
-   EDITOR MAIN（中央編輯區）
-   ========================================================= */
+/* ========================================================
+   EDITOR MAIN
+   ======================================================== */
 .editor-main {
     flex: 1;
     overflow-y: auto;
@@ -557,10 +574,7 @@ kbd {
     background: var(--bg);
 }
 
-/* ── 格式化工具列 ──
-   position: sticky 讓捲動時工具列固定在頂部
-   手機版唯讀模式下由 switchNote() 隱藏
-*/
+/* ─── Toolbar ─── */
 .editor-toolbar {
     display: flex;
     align-items: center;
@@ -573,8 +587,6 @@ kbd {
     top: 0;
     z-index: 10;
 }
-
-.editor-toolbar.hidden { display: none; }
 
 .toolbar-group {
     display: flex;
@@ -609,7 +621,6 @@ kbd {
     color: var(--accent);
 }
 
-/* 工具列分隔線 */
 .toolbar-divider {
     width: 1px;
     height: 18px;
@@ -617,14 +628,12 @@ kbd {
     margin: 0 4px;
 }
 
-/* ── 筆記標頭 ── */
+/* ─── Note Header ─── */
 .note-header {
     padding: 20px 24px 0;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
 }
-
-.note-header.hidden { display: none; }
 
 .note-header-top {
     display: flex;
@@ -638,12 +647,6 @@ kbd {
     min-width: 0;
 }
 
-/*
-  筆記標題
-  contenteditable 由 switchNote() 動態設定：
-    桌機 → true（可編輯）
-    手機 → false（唯讀）
-*/
 .note-title {
     font-size: 22px;
     font-weight: 700;
@@ -654,7 +657,6 @@ kbd {
     word-break: break-word;
 }
 
-/* 桌機可編輯狀態：底線提示 */
 .note-title[contenteditable="true"] {
     border-bottom: 2px dashed var(--border);
     padding-bottom: 2px;
@@ -664,7 +666,6 @@ kbd {
     border-bottom-color: var(--accent);
 }
 
-/* Drive fileId 顯示（供除錯）*/
 .note-meta {
     font-size: 11px;
     color: var(--text3);
@@ -679,7 +680,6 @@ kbd {
     flex-shrink: 0;
 }
 
-/* ── 標籤列 ── */
 .tags-bar {
     display: flex;
     align-items: center;
@@ -694,7 +694,6 @@ kbd {
     gap: 5px;
 }
 
-/* 標籤 Chip（renderTags() 動態產生）*/
 .tag-chip {
     display: inline-flex;
     align-items: center;
@@ -706,7 +705,6 @@ kbd {
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
-    transition: all var(--transition);
 }
 
 .tag-chip:hover {
@@ -714,7 +712,6 @@ kbd {
     color: #fff;
 }
 
-/* 新增標籤按鈕 */
 .tag-add-btn {
     font-size: 11px;
     color: var(--text3);
@@ -731,9 +728,6 @@ kbd {
     color: var(--accent);
 }
 
-/* ── 統計列 ──
-   字數 / 區塊數 / 最後儲存時間
-*/
 .note-stats {
     display: flex;
     gap: 16px;
@@ -742,7 +736,7 @@ kbd {
     padding: 6px 0 8px;
 }
 
-/* ── 歡迎畫面（未登入時可選擇性顯示）── */
+/* ─── Welcome Screen ─── */
 .welcome-screen {
     flex: 1;
     display: flex;
@@ -776,7 +770,7 @@ kbd {
     margin-bottom: 8px;
 }
 
-.welcome-content > p {
+.welcome-content>p {
     color: var(--text2);
     font-size: 13px;
     margin-bottom: 24px;
@@ -809,9 +803,7 @@ kbd {
     margin-top: 12px;
 }
 
-/* ── 區塊容器 ──
-   max-width: 820px 置中，讓長文閱讀舒適
-*/
+/* ─── Blocks Container ─── */
 .blocks-container {
     flex: 1;
     padding: 16px 24px 60px;
@@ -820,12 +812,11 @@ kbd {
     margin: 0 auto;
 }
 
-.blocks-container.hidden { display: none; }
+.blocks-container.hidden {
+    display: none;
+}
 
-/* ─────────────────────────────────────────────────────────
-   BLOCK ROW（每個筆記區塊）
-   結構：.block-drag | fold-toggle | .block-bullet | .block-editor
-   ───────────────────────────────────────────────────────── */
+/* ─── Block Row ─── */
 .block-row {
     display: flex;
     align-items: flex-start;
@@ -837,21 +828,19 @@ kbd {
     position: relative;
 }
 
-/* hover 時才顯示拖曳把手 */
-.block-row:hover .block-drag { opacity: 1; }
+.block-row:hover .block-drag {
+    opacity: 1;
+}
 
-/* 拖曳目標位置指示線 */
 .block-row.drag-over {
     border-top-color: var(--accent);
     border-top-width: 2px;
 }
 
-/* 被拖曳的 row 半透明 */
-.block-row.dragging { opacity: .3; }
+.block-row.dragging {
+    opacity: .3;
+}
 
-/* ── 拖曳把手（⦙⦙）──
-   手機版由 renderBlock() 設 display:none
-*/
 .block-drag {
     opacity: 0;
     width: 18px;
@@ -868,12 +857,14 @@ kbd {
     justify-content: center;
 }
 
-.block-drag:hover { color: var(--accent); }
-.block-drag:active { cursor: grabbing; }
+.block-drag:hover {
+    color: var(--accent);
+}
 
-/* ── 項目符號（•）──
-   點擊可循環切換標題層級
-*/
+.block-drag:active {
+    cursor: grabbing;
+}
+
 .block-bullet {
     width: 20px;
     flex-shrink: 0;
@@ -888,16 +879,10 @@ kbd {
     transition: color var(--transition);
 }
 
-.block-bullet:hover { color: var(--accent); }
+.block-bullet:hover {
+    color: var(--accent);
+}
 
-/* ── 摺疊按鈕（▼/▶）──
-   有子區塊時由 renderBlock() 渲染
-   inline style 覆寫，CSS 提供 hover 色
-*/
-.block-fold-toggle { transition: color var(--transition); }
-.block-fold-toggle:hover { color: var(--accent) !important; }
-
-/* ── 編輯區（contenteditable）── */
 .block-editor {
     flex: 1;
     min-width: 0;
@@ -911,16 +896,17 @@ kbd {
     transition: background var(--transition);
 }
 
-.block-editor:focus { background: var(--surface2); }
+.block-editor:focus {
+    background: var(--surface2);
+}
 
-/* Placeholder（只有第一個 block 顯示）*/
 .block-editor:empty::before {
     content: attr(data-placeholder);
     color: var(--text3);
     pointer-events: none;
 }
 
-/* ── Block 內容樣式 ── */
+/* Block type styling */
 .block-editor h1 {
     font-size: 22px;
     font-weight: 700;
@@ -941,8 +927,14 @@ kbd {
     margin-bottom: 2px;
 }
 
-.block-editor strong { font-weight: 700; color: var(--text); }
-.block-editor em { font-style: italic; }
+.block-editor strong {
+    font-weight: 700;
+    color: var(--text);
+}
+
+.block-editor em {
+    font-style: italic;
+}
 
 .block-editor u {
     text-decoration: underline;
@@ -978,35 +970,7 @@ kbd {
     text-decoration-color: var(--accent-dim);
 }
 
-.block-editor hr {
-    border: none;
-    border-top: 1px solid var(--border2);
-    margin: 4px 0;
-}
-
-/* 表格 */
-.block-editor table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 6px 0;
-    font-size: 13px;
-}
-
-.block-editor th,
-.block-editor td {
-    border: 1px solid var(--border);
-    padding: 6px 10px;
-    text-align: left;
-}
-
-.block-editor th {
-    background: var(--surface2);
-    font-weight: 600;
-}
-
-.block-editor tr:hover { background: var(--surface2); }
-
-/* ── Wiki 雙向連結（[[筆記名]]）── */
+/* Wiki-style internal links */
 .block-editor .wiki-link {
     color: var(--accent);
     background: var(--accent-soft);
@@ -1016,7 +980,6 @@ kbd {
     cursor: pointer;
     text-decoration: none;
     border-bottom: 1px solid var(--accent-dim);
-    transition: all var(--transition);
 }
 
 .block-editor .wiki-link:hover {
@@ -1024,30 +987,25 @@ kbd {
     color: #fff;
 }
 
-/* 目標筆記不存在時顯示虛線 */
 .block-editor .wiki-link.missing {
     opacity: .6;
     border-bottom-style: dashed;
 }
 
-/* ── 行內標籤（#tag）── */
+/* Tags */
 .block-editor .inline-tag {
     color: var(--accent);
     font-weight: 600;
     cursor: pointer;
 }
 
-/* ─────────────────────────────────────────────────────────
-   TODO 區塊
-   renderTodoBlock() 輸出 .todo-block 結構
-   ───────────────────────────────────────────────────────── */
+/* Checkbox blocks */
 .todo-block {
     display: flex;
     align-items: flex-start;
     gap: 8px;
 }
 
-/* 核取方塊 */
 .todo-checkbox {
     width: 15px;
     height: 15px;
@@ -1065,25 +1023,18 @@ kbd {
     font-size: 9px;
 }
 
-/* 已勾選：藍色填充 */
 .todo-checkbox.checked {
     background: var(--accent);
     border-color: var(--accent);
     color: #fff;
 }
 
-/* 已完成文字：刪除線 + 淡化 */
 .todo-content.checked {
     text-decoration: line-through;
     color: var(--text3);
 }
 
-/* ─────────────────────────────────────────────────────────
-   圖片區塊（雲端版）
-   單機版：src = './image/filename.png'（本地路徑）
-   雲端版：block.driveFileId → getDriveImageUrl() → Blob URL
-   外觀樣式與單機版完全相同
-   ───────────────────────────────────────────────────────── */
+/* Image block */
 .image-block-wrap {
     display: inline-block;
     background: var(--surface);
@@ -1099,7 +1050,6 @@ kbd {
     max-width: 100%;
 }
 
-/* 圖片控制列（滑桿 + 刪除）*/
 .image-controls {
     display: flex;
     align-items: center;
@@ -1122,32 +1072,40 @@ kbd {
     background: var(--danger-soft);
     color: var(--danger);
     cursor: pointer;
-    transition: opacity var(--transition);
 }
 
-.image-del-btn:hover { opacity: .8; }
+/* Horizontal Rule */
+.block-editor hr {
+    border: none;
+    border-top: 1px solid var(--border2);
+    margin: 4px 0;
+}
 
-/*
-  圖片載入中提示
-  getDriveImageUrl() 為 async，載入期間顯示此樣式
-*/
-.image-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 320px;
-    height: 160px;
+/* Tables */
+.block-editor table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 6px 0;
+    font-size: 13px;
+}
+
+.block-editor th,
+.block-editor td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+}
+
+.block-editor th {
     background: var(--surface2);
-    border-radius: var(--radius-sm);
-    color: var(--text3);
-    font-size: 12px;
-    gap: 8px;
+    font-weight: 600;
 }
 
-/* ─────────────────────────────────────────────────────────
-   搜尋結果（#searchResults）
-   handleSearch() 觸發時取代 blocksContainer 顯示
-   ───────────────────────────────────────────────────────── */
+.block-editor tr:hover {
+    background: var(--surface2);
+}
+
+/* ─── Search Results ─── */
 .search-results {
     flex: 1;
     padding: 16px 24px;
@@ -1156,7 +1114,9 @@ kbd {
     margin: 0 auto;
 }
 
-.search-results.hidden { display: none; }
+.search-results.hidden {
+    display: none;
+}
 
 .search-header {
     font-size: 13px;
@@ -1180,7 +1140,6 @@ kbd {
     box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-/* 筆記來源標籤 */
 .search-result-file {
     font-size: 11px;
     color: var(--accent);
@@ -1189,13 +1148,11 @@ kbd {
     font-weight: 600;
 }
 
-/* 摘要文字 */
 .search-result-snippet {
     font-size: 13px;
     color: var(--text2);
 }
 
-/* 搜尋關鍵字高亮（亮色）*/
 .search-result-snippet mark {
     background: #fef08a;
     color: #713f12;
@@ -1203,17 +1160,14 @@ kbd {
     padding: 0 2px;
 }
 
-/* 搜尋關鍵字高亮（暗色）*/
 [data-theme="dark"] .search-result-snippet mark {
     background: #713f12;
     color: #fef08a;
 }
 
-
-/* =========================================================
-   RIGHT PANEL（右側面板）
-   三個 Tab：說明 / 大綱 / 屬性
-   ========================================================= */
+/* ========================================================
+   RIGHT PANEL
+   ======================================================== */
 .right-panel {
     width: var(--rpanel-w);
     flex-shrink: 0;
@@ -1224,7 +1178,6 @@ kbd {
     overflow: hidden;
 }
 
-/* Tab 列 */
 .right-panel-tabs {
     display: flex;
     border-bottom: 1px solid var(--border);
@@ -1245,14 +1198,15 @@ kbd {
     transition: all var(--transition);
 }
 
-.panel-tab:hover { color: var(--text2); }
+.panel-tab:hover {
+    color: var(--text2);
+}
 
 .panel-tab.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
 }
 
-/* Tab 內容區 */
 .panel-content {
     display: none;
     flex: 1;
@@ -1260,10 +1214,14 @@ kbd {
     padding: 12px;
 }
 
-.panel-content.active { display: block; }
+.panel-content.active {
+    display: block;
+}
 
-/* ── 說明面板 ── */
-.help-section { margin-bottom: 14px; }
+/* Help panel */
+.help-section {
+    margin-bottom: 14px;
+}
 
 .help-title {
     font-size: 10.5px;
@@ -1292,10 +1250,10 @@ kbd {
     padding: 0 4px;
 }
 
-/* ── 大綱面板 ──
-   updateOutline() 掃描 h1/h2/h3 動態渲染
-*/
-.outline-list { list-style: none; }
+/* Outline panel */
+.outline-list {
+    list-style: none;
+}
 
 .outline-item {
     font-size: 12px;
@@ -1314,10 +1272,18 @@ kbd {
     color: var(--text);
 }
 
-/* 標題層級縮排 */
-.outline-item.h1 { font-weight: 700; }
-.outline-item.h2 { padding-left: 14px; }
-.outline-item.h3 { padding-left: 22px; font-size: 11px; }
+.outline-item.h1 {
+    font-weight: 700;
+}
+
+.outline-item.h2 {
+    padding-left: 14px;
+}
+
+.outline-item.h3 {
+    padding-left: 22px;
+    font-size: 11px;
+}
 
 .outline-empty {
     font-size: 11.5px;
@@ -1325,7 +1291,7 @@ kbd {
     padding: 8px 4px;
 }
 
-/* ── 屬性面板 ── */
+/* Props panel */
 .props-list {}
 
 .prop-row {
@@ -1336,7 +1302,9 @@ kbd {
     border-bottom: 1px solid var(--border);
 }
 
-.prop-row:last-child { border-bottom: none; }
+.prop-row:last-child {
+    border-bottom: none;
+}
 
 .prop-key {
     font-size: 11px;
@@ -1351,28 +1319,26 @@ kbd {
     font-family: var(--font-mono);
 }
 
-
-/* =========================================================
-   MOBILE DRAWER（手機側拉選單）
-   toggleMobileDrawer(true/false) 控制
-   ========================================================= */
+/* ========================================================
+   MOBILE DRAWER
+   ======================================================== */
 .mobile-drawer {
     position: fixed;
     inset: 0;
     z-index: 50;
 }
 
-.mobile-drawer.hidden { display: none; }
+.mobile-drawer.hidden {
+    display: none;
+}
 
-/* 半透明遮罩 */
 .drawer-mask {
     position: absolute;
     inset: 0;
-    background: rgba(0,0,0,.4);
+    background: rgba(0, 0, 0, .4);
     backdrop-filter: blur(2px);
 }
 
-/* 側拉面板本體（最寬 290px 或 85vw）*/
 .drawer-panel {
     position: absolute;
     top: 0;
@@ -1399,45 +1365,25 @@ kbd {
     font-size: 14px;
 }
 
-/* 手機版新增筆記按鈕區 */
 .drawer-actions {
     padding: 8px 14px;
     border-bottom: 1px solid var(--border);
 }
 
-/* 手機版筆記樹捲動 */
 .drawer-panel .note-tree {
     flex: 1;
     overflow-y: auto;
     padding: 8px 14px;
 }
 
-/*
-  ══════════════════════════════════════════════
-  雲端版專屬：手機唯讀提示 Banner
-  IS_MOBILE 為 true 時，switchNote() 顯示
-  ══════════════════════════════════════════════
-*/
-.mobile-readonly-banner {
-    background: var(--accent-soft);
-    border-bottom: 1px solid var(--accent-dim);
-    color: var(--accent);
-    font-size: 12px;
-    font-weight: 500;
-    text-align: center;
-    padding: 8px 16px;
-    flex-shrink: 0;
-}
-
-
-/* =========================================================
-   MODALS（彈出視窗共用）
-   ========================================================= */
+/* ========================================================
+   MODALS
+   ======================================================== */
 .modal-overlay {
     position: fixed;
     inset: 0;
     z-index: 60;
-    background: rgba(0,0,0,.5);
+    background: rgba(0, 0, 0, .5);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: flex-start;
@@ -1445,7 +1391,9 @@ kbd {
     padding-top: 80px;
 }
 
-.modal-overlay.hidden { display: none; }
+.modal-overlay.hidden {
+    display: none;
+}
 
 .modal-box {
     background: var(--surface);
@@ -1454,13 +1402,19 @@ kbd {
     width: 90%;
     max-width: 480px;
     overflow: hidden;
-    /* 開啟時縮放淡入 */
     animation: modal-in .15s ease;
 }
 
 @keyframes modal-in {
-    from { opacity: 0; transform: scale(.96) translateY(-10px); }
-    to   { opacity: 1; transform: none; }
+    from {
+        opacity: 0;
+        transform: scale(.96) translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 .modal-header {
@@ -1493,74 +1447,12 @@ kbd {
     color: var(--text);
 }
 
-/* ── 匯出 Modal ── */
-.export-options {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    padding: 14px 16px;
-}
-
-.export-btn {
-    padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--surface2);
-    font-size: 12.5px;
-    cursor: pointer;
-    color: var(--text2);
-    transition: all var(--transition);
-    text-align: left;
-}
-
-.export-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: var(--accent-soft);
-}
-
-/* Markdown 預覽區 */
-.export-preview {
-    margin: 0 16px 16px;
-    padding: 10px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 11.5px;
-    font-family: var(--font-mono);
-    color: var(--text2);
-    max-height: 180px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-/* ── 知識圖譜 Modal ── */
-.graph-modal { max-width: 720px; }
-
-#graphCanvas {
-    display: block;
-    width: 100%;
-    /* 高度由 drawGraph() 動態設定，此處設預設值 */
-    height: 400px;
-}
-
-.graph-hint {
-    font-size: 11px;
-    color: var(--text3);
-    text-align: center;
-    padding: 8px;
-    border-top: 1px solid var(--border);
-}
-
-/* ── 指令面板（Command Palette）──
-   z-index 70：在 modal(60) 之上
-*/
+/* Command Palette */
 .cmd-overlay {
     position: fixed;
     inset: 0;
     z-index: 70;
-    background: rgba(0,0,0,.5);
+    background: rgba(0, 0, 0, .5);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: flex-start;
@@ -1568,7 +1460,9 @@ kbd {
     padding-top: 80px;
 }
 
-.cmd-overlay.hidden { display: none; }
+.cmd-overlay.hidden {
+    display: none;
+}
 
 .cmd-box {
     width: 90%;
@@ -1602,8 +1496,13 @@ kbd {
     color: var(--text);
 }
 
-.cmd-header input:focus { outline: none; }
-.cmd-header input::placeholder { color: var(--text3); }
+.cmd-header input:focus {
+    outline: none;
+}
+
+.cmd-header input::placeholder {
+    color: var(--text3);
+}
 
 .cmd-esc {
     font-size: 10px;
@@ -1617,7 +1516,6 @@ kbd {
     overflow-y: auto;
 }
 
-/* 指令區段標籤 */
 .cmd-section-label {
     font-size: 10px;
     font-weight: 600;
@@ -1627,7 +1525,6 @@ kbd {
     padding: 4px 8px;
 }
 
-/* 指令項目 */
 .cmd-item {
     display: flex;
     align-items: center;
@@ -1647,14 +1544,77 @@ kbd {
     color: var(--accent);
 }
 
-.cmd-item-icon { flex-shrink: 0; }
-.cmd-item kbd { margin-left: auto; }
+.cmd-item-icon {
+    flex-shrink: 0;
+}
 
+.cmd-item kbd {
+    margin-left: auto;
+}
 
-/* =========================================================
-   TOAST 通知
-   toast(msg, duration) 控制，顯示後 duration ms 自動隱藏
-   ========================================================= */
+/* Export Modal */
+.export-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 14px 16px;
+}
+
+.export-btn {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    font-size: 12.5px;
+    cursor: pointer;
+    color: var(--text2);
+    transition: all var(--transition);
+    text-align: left;
+}
+
+.export-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.export-preview {
+    margin: 0 16px 16px;
+    padding: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 11.5px;
+    font-family: var(--font-mono);
+    color: var(--text2);
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Graph Modal */
+.graph-modal {
+    max-width: 720px;
+}
+
+#graphCanvas {
+    display: block;
+    width: 100%;
+    height: 400px;
+}
+
+.graph-hint {
+    font-size: 11px;
+    color: var(--text3);
+    text-align: center;
+    padding: 8px;
+    border-top: 1px solid var(--border);
+}
+
+/* ========================================================
+   TOAST
+   ======================================================== */
 .toast {
     position: fixed;
     bottom: 24px;
@@ -1670,38 +1630,28 @@ kbd {
     z-index: 90;
     animation: toast-in .2s ease;
     white-space: nowrap;
-    pointer-events: none;
 }
 
-.toast.hidden { display: none; }
+.toast.hidden {
+    display: none;
+}
 
 @keyframes toast-in {
-    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
-    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
 }
 
-
-/* =========================================================
-   DRAG & DROP（樹狀目錄拖曳）
-   ========================================================= */
-.tree-item[draggable="true"] { cursor: grab; }
-.tree-item[draggable="true"]:active { cursor: grabbing; }
-
-/* 拖曳進入資料夾的高亮提示 */
-.tree-folder.drag-over > summary,
-.tree-folder.drag-over > .folder-title,
-.drag-over {
-    background-color: var(--accent-dim) !important;
-    outline: 1px dashed var(--accent);
-    border-radius: var(--radius-sm);
-}
-
-
-/* =========================================================
-   RESPONSIVE — MOBILE（≤768px）
-   ========================================================= */
+/* ========================================================
+   RESPONSIVE — MOBILE
+   ======================================================== */
 @media (max-width: 768px) {
-    /* 區塊容器底部留白，避免被 iOS 底部 bar 遮擋 */
     .blocks-container {
         padding: 12px 16px 80px;
     }
@@ -1710,35 +1660,32 @@ kbd {
         padding: 14px 16px 0;
     }
 
-    /* 手機標題縮小 */
     .note-title {
         font-size: 18px;
     }
 
-    /* 工具列在手機版更緊湊（唯讀時由 JS 隱藏）*/
     .editor-toolbar {
         padding: 5px 12px;
-        overflow-x: auto;
-        flex-wrap: nowrap;
     }
 }
 
-
-/* =========================================================
+/* ========================================================
    PRINT
-   列印時隱藏 UI 元素，只保留內容
-   ========================================================= */
+   ======================================================== */
 @media print {
+
     .app-header,
     .sidebar,
     .right-panel,
     .editor-toolbar,
     .note-header-actions,
     .tags-bar,
-    .note-stats,
+    .note-stats {
+        display: none !important;
+    }
+
     .block-drag,
-    .block-bullet,
-    .mobile-readonly-banner {
+    .block-bullet {
         display: none !important;
     }
 
@@ -1746,4 +1693,25 @@ kbd {
         padding: 0;
         max-width: 100%;
     }
+}
+
+/* ========================================================
+   Drag & Drop Styles
+   ======================================================== */
+/* 讓筆記項目顯示可抓取的鼠標 */
+.tree-item[draggable="true"] {
+    cursor: grab;
+}
+
+.tree-item[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+/* 拖曳進入資料夾時的高亮提示 */
+.tree-folder.drag-over>summary,
+.tree-folder.drag-over>.folder-title,
+.drag-over {
+    background-color: var(--accent-dim) !important;
+    outline: 1px dashed var(--accent);
+    border-radius: var(--radius-sm);
 }
