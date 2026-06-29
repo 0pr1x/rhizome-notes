@@ -1033,7 +1033,7 @@ function inlineFormat(text) {
     // 加上 contenteditable="false" 可以防止使用者在編輯時不小心刪到標籤內部結構
     html = html.replace(/\[\[(.*?)\]\]/g, (match, noteName) => {
         const trimmed = noteName.trim();
-        return `<span class="wiki-link" data-note="${trimmed}" contenteditable="false">[[${trimmed}]]</span>`;
+        return `<span class="wiki-link" data-note="${trimmed}" contenteditable="false">${trimmed}</span>`;
     });
     
     return html;
