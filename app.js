@@ -1044,13 +1044,18 @@ function renderImageBlock(block, index, blocks, editor) {
     img.style.width = block.width || '320px';
     img.alt = '圖片';
 
-    if (dirHandle && block.src && block.src.startsWith('./image/')) {
+    // 🔧 修正 1：把 dirHandle 條件放寬，讓 isCloudMode 也能進入此區塊
+    if ((dirHandle || isCloudMode) && block.src && block.src.startsWith('./image/')) {
         const fileName = block.src.replace('./image/', '');
         (async () => {
             try {
                 if (isCloudMode) {
+                    // 🔧 修正 2：優先使用 driveImageId，若無則查詢並「回寫」儲存
                     const driveId = block.driveImageId || await window.RhizomeDrive.resolveImageDriveId(fileName);
-                    if (driveId) img.src = await window.RhizomeDrive.getImageBlobUrl(driveId);
+                    if (driveId) {
+                        block.driveImageId = driveId; // 記錄 ID，下次載入更快
+                        img.src = await window.RhizomeDrive.getImageBlobUrl(driveId);
+                    }
                     else img.alt = '❌ 圖片遺失';
                 } else {
                     const imgDir = await dirHandle.getDirectoryHandle('image');
