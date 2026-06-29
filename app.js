@@ -895,33 +895,44 @@ function renderBlock(block, index, blocks, c) {
         renderTodoBlock(block, index, blocks, editor);
     } else {
         editor.contentEditable = 'true';
-        editor.innerHTML = renderInlineMarkdown(block.content || '');
+        // 初始渲染：將儲存的 raw text 轉為帶 wiki-link span 的 HTML
+        editor.innerHTML = inlineFormat(block.content || '');
 
         editor.addEventListener('keydown', e => handleBlockKeydown(e, block, index, blocks, c));
+
         editor.addEventListener('input', () => {
-            block.content = editor.innerHTML;
+            // 編輯中：只存 plain text，不動 DOM，避免游標跳位
+            block.content = editor.innerText;
             scheduleSave();
             updateStatsDebounced();
-            refreshInlineRender(editor);
         });
-       editor.addEventListener('focus', () => {
+
+        editor.addEventListener('focus', () => {
             $('editorToolbar') && show($('editorToolbar'));
-            
-            // 🚀 關鍵修正 1：進入編輯狀態時，把內存的純文字還原給編輯器，避免 HTML 標籤干擾游標與打字
-            editor.textContent = block.content || '';
+            // 進入編輯時還原純文字，讓使用者可以正常輸入（包含 [[...]] 語法）
+            // 保留游標在末尾
+            const rawText = block.content || '';
+            editor.textContent = rawText;
+            // 游標移至末尾
+            try {
+                const range = document.createRange();
+                const sel = window.getSelection();
+                range.selectNodeContents(editor);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            } catch { }
         });
 
         editor.addEventListener('blur', () => {
-            // 🚀 關鍵修正 2：離開編輯狀態時，將使用者的「純文字輸入」存回資料庫
-            block.content = editor.textContent;
-            
-            // 🚀 關鍵修正 3：立刻將畫面渲染成帶有 [[超連結]] 與行內程式碼的外觀
+            // block.content 在 focus 期間由 input 事件以 innerText 維護（純文字模式）
+            // blur 時直接取用，不從 innerHTML/innerText 重讀，避免 wiki-link span 的文字覆蓋掉 [[]] 語法
             editor.innerHTML = inlineFormat(block.content);
-            
             scheduleSave();
             updateOutline();
         });
 
+        // ★ Bug 1 Fix：paste 監聽掛在 editor 上，並確保 focus 不干擾 paste 流程
         editor.addEventListener('paste', e => handlePaste(e, block, index, blocks));
     }
 
@@ -1023,19 +1034,29 @@ function parseMarkdownToHtml(md) {
 function inlineFormat(text) {
     if (!text) return '';
     
-    // 1. 先做基本的 HTML 轉義，防止使用者輸入的 < > 破壞 DOM 結構
+    // text 是純文字（innerText），先做 HTML 轉義防止 XSS
     let html = text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
     
-    // 2. 🚀 核心：匹配 [[筆記名]] 並轉換為具備超連結特性的 Wiki-link 節點
-    // 加上 contenteditable="false" 可以防止使用者在編輯時不小心刪到標籤內部結構
+    // 將換行轉為 <br>
+    html = html.replace(/\n/g, '<br>');
+
+    // 匹配 [[筆記名]] → wiki-link span（contenteditable=false 防止誤編輯）
     html = html.replace(/\[\[(.*?)\]\]/g, (match, noteName) => {
         const trimmed = noteName.trim();
-        return `<span class="wiki-link" data-note="${trimmed}" contenteditable="false">${trimmed}</span>`;
+        if (!trimmed) return match;
+        const safe = trimmed.replace(/"/g, '&quot;');
+        return `<span class="wiki-link" data-note="${safe}" contenteditable="false">${trimmed}</span>`;
     });
-    
+
+    // 行內 code：`code`
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // **bold**
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
     return html;
 }
 
@@ -1286,24 +1307,30 @@ function focusBlock(index) {
     const row = c?.children[index];
     if (!row) return;
     
-    const ed = row.querySelector('.block-editor, .todo-content');
+    const ed = row.querySelector('.block-editor');
     if (!ed) return;
 
-    // 🔧 新增：判斷如果是可編輯文字，則 focus 文字；如果是圖片，則 focus 圖片容器
-    if (ed.contentEditable === 'true') {
-        ed.focus();
-        try {
-            const range = document.createRange();
-            const sel = window.getSelection();
-            range.selectNodeContents(ed);
-            range.collapse(false);
-            sel.removeAllRanges();
-            sel.addRange(range);
-        } catch { }
-    } else {
+    // 圖片 block：contentEditable 為 false，改 focus 圖片 wrap
+    if (ed.contentEditable !== 'true') {
         const imgWrap = ed.querySelector('.image-block-wrap');
-        if (imgWrap) imgWrap.focus();
+        if (imgWrap) {
+            imgWrap.focus();
+        }
+        return;
     }
+
+    // 一般文字 block
+    const todo = ed.querySelector('.todo-content');
+    const target = todo || ed;
+    target.focus();
+    try {
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    } catch { }
 }
 
 // ─── Toolbar commands ─────────────────────────────────────
@@ -1370,45 +1397,58 @@ function getBlockIndex(editorEl) {
 
 // ─── Paste Handler ───────────────────────────────────────
 async function handlePaste(e, block, index, blocks) {
-    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items || [];
-    for (const it of items) {
-        if (it.kind === 'file' && it.type.startsWith('image/')) {
-            e.preventDefault();
-            const file = it.getAsFile();
-            if (!isWorkspaceReady()) { toast('⚠️ 請先連結工作區'); return; }
-            const imgName = `img_${Date.now()}.png`;
-            if (isCloudMode) {
-                blocks.splice(index + 1, 0, {
-                    id: uid(), type: 'image',
-                    src: `./image/${imgName}`,
-                    _pendingImage: file,
-                    width: '320px', indent: block.indent || 0
-                });
+    const clipData = e.clipboardData || e.originalEvent?.clipboardData;
+    if (!clipData) return;
+
+    // 先掃描是否有圖片類型的 item
+    const items = Array.from(clipData.items || []);
+    const imageItem = items.find(it => it.kind === 'file' && it.type.startsWith('image/'));
+
+    if (imageItem) {
+        e.preventDefault();
+        e.stopPropagation();
+        const file = imageItem.getAsFile();
+        if (!file) { toast('⚠️ 無法取得圖片檔案'); return; }
+        if (!isWorkspaceReady()) { toast('⚠️ 請先連結工作區'); return; }
+
+        const imgName = `img_${Date.now()}.png`;
+        const newBlock = {
+            id: uid(), type: 'image',
+            src: `./image/${imgName}`,
+            width: '320px',
+            indent: block.indent || 0
+        };
+
+        if (isCloudMode) {
+            newBlock._pendingImage = file;
+            blocks.splice(index + 1, 0, newBlock);
+            renderBlocks(blocks);
+            markDirty();
+            // 圖片插入後 focus 到圖片 block，讓 Enter 可繼續
+            setTimeout(() => focusBlock(index + 1), 30);
+            toast('🖼️ 圖片已加入（請按儲存上傳）');
+        } else {
+            try {
+                const imgDir = await dirHandle.getDirectoryHandle('image', { create: true });
+                const imgFh = await imgDir.getFileHandle(imgName, { create: true });
+                const w = await imgFh.createWritable();
+                await w.write(file);
+                await w.close();
+                blocks.splice(index + 1, 0, newBlock);
                 renderBlocks(blocks);
-                markDirty();
-                toast('🖼️ 圖片已加入（請按儲存上傳）');
-            } else {
-                try {
-                    const imgDir = await dirHandle.getDirectoryHandle('image', { create: true });
-                    const imgFh = await imgDir.getFileHandle(imgName, { create: true });
-                    const w = await imgFh.createWritable();
-                    await w.write(file);
-                    await w.close();
-                    blocks.splice(index + 1, 0, {
-                        id: uid(), type: 'image',
-                        src: `./image/${imgName}`, width: '320px', indent: block.indent || 0
-                    });
-                    renderBlocks(blocks);
-                    scheduleSave();
-                    toast('🖼️ 圖片已儲存');
-                } catch (err) { toast('⚠️ 圖片寫入失敗'); console.error(err); }
+                scheduleSave();
+                setTimeout(() => focusBlock(index + 1), 30);
+                toast('🖼️ 圖片已儲存');
+            } catch (err) {
+                toast('⚠️ 圖片寫入失敗');
+                console.error(err);
             }
-            return;
         }
+        return;
     }
 
     // Markdown paste
-    const rawText = e.clipboardData?.getData('text/plain') || '';
+    const rawText = clipData.getData('text/plain') || '';
     if (rawText && (rawText.includes('|') || /^#+\s/.test(rawText) || rawText.includes('**') || rawText.includes('```'))) {
         e.preventDefault();
         const html = parseMarkdownToHtml(rawText);
