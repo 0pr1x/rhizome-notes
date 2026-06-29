@@ -166,87 +166,78 @@ function bindGlobalEvents() {
 
     // Global keyboard shortcuts
     document.addEventListener('keydown', handleGlobalShortcut);
-    // 🚀 啟動 Wiki-link 雙軌互動邏輯
-   document.addEventListener('click', async (e) => {
-       // 檢查點擊的是不是 Wiki-link
-       const wikiLink = e.target.closest('.wiki-link');
-       if (!wikiLink) return;
-   
-       e.preventDefault();
-       e.stopPropagation();
-   
-       const noteName = wikiLink.getAttribute('data-note');
-       if (!noteName) return;
-   
-       // 判斷是否按下 Ctrl (Windows/Linux) 或 Meta (Mac 的 Command 鍵)
-       const isJumpKey = e.ctrlKey || e.metaKey;
-   
-       if (isJumpKey) {
-           // ----------------------------------------------------
-           // 🎯 模式 A：Ctrl/Cmd + 點擊 -> 直接跳轉至該筆記
-           // ----------------------------------------------------
-           // 在目前的 database 尋找是否有對應標題的 fileId
-           let targetFileId = Object.keys(database).find(id => {
-               return (fileMeta[id] && fileMeta[id].title === noteName) || id.includes(noteName);
-           });
-   
-           if (targetFileId) {
-               switchNote(targetFileId);
-               toast(`➡️ 已跳轉至筆記：${noteName}`);
-           } else {
-               // 筆記不存在，提示建立
-               if (confirm(`筆記「${noteName}」尚未存在，是否立刻建立新筆記？`)) {
-                   try {
-                       let newId;
-                       if (isCloudMode) {
-                           // 雲端模式：透過 RhizomeDrive 建立
-                           const defaultContent = JSON.stringify({
-                               meta: { title: noteName, created: Date.now(), modified: Date.now() },
-                               blocks: [{ id: uid(), content: noteName, indent: 0 }]
-                           }, null, 2);
-                           
-                           await window.RhizomeDrive.createNote(noteName + '.json', defaultContent);
-                           newId = noteName + '.json';
-                       } else {
-                           // 本地模式
-                           newId = noteName;
-                       }
-                       
-                       // 重新整理側邊欄目錄並跳轉
-                       if (typeof buildTreeFromDrive === 'function') await buildTreeFromDrive(); 
-                       if (typeof renderSidebar === 'function') renderSidebar();
-                       
-                       switchNote(newId);
-                       toast(`✨ 已成功建立並跳轉至：${noteName}`);
-                   } catch (err) {
-                       console.error(err);
-                       toast('❌ 建立 Wiki 筆記失敗');
-                   }
-               }
-           }
-       } else {
-           // ----------------------------------------------------
-           // 🔍 模式 B：一般點擊 -> 填入搜尋列並觸發全域搜尋
-           // ----------------------------------------------------
-           // 優先尋找側邊欄搜尋框，若無則尋找命令面板搜尋框
-           const searchInput = document.querySelector('.sidebar-search input') || document.getElementById('cmdInput');
-           
-           if (searchInput) {
-               searchInput.value = noteName; // 或者填入 `[[${noteName}]]` 進行精準匹配
-               
-               // 💡 關鍵：必須手動觸發 input 事件，才能讓原本綁定在搜尋框上的監聽器開跑
-               searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-               searchInput.focus();
-               
-               // 如果你有獨立的全域搜尋啟動函式，也可以在這裡直接呼叫，例如：
-               // if (typeof triggerGlobalSearch === 'function') triggerGlobalSearch(noteName);
-               
-               toast(`🔍 已將「${noteName}」帶入全域搜尋`);
-           } else {
-               toast('❌ 找不到搜尋輸入欄位');
-           }
-       }
-   });
+    document.addEventListener('click', async (e) => {
+    const wikiLink = e.target.closest('.wiki-link');
+    if (!wikiLink) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const noteName = wikiLink.getAttribute('data-note');
+    if (!noteName) return;
+
+    const isJumpKey = e.ctrlKey || e.metaKey;
+
+    if (isJumpKey) {
+        // A. 跳轉或建立
+        let targetFileId = Object.keys(database).find(id => {
+            return (fileMeta[id] && fileMeta[id].title === noteName) || id === noteName || id === (noteName + '.json');
+        });
+
+        if (targetFileId) {
+            switchNote(targetFileId);
+            toast(`➡️ 已跳轉至：${noteName}`);
+        } else {
+            if (confirm(`筆記「${noteName}」不存在，是否立刻建立？`)) {
+                try {
+                    let newId = isCloudMode ? noteName + '.json' : noteName;
+                    
+                    // 初始化 database 快取，避免 switchNote 時找不到
+                    database[newId] = [{ id: uid('b'), content: noteName, indent: 0 }];
+                    fileMeta[newId] = { title: noteName, created: Date.now(), modified: Date.now() };
+
+                    if (isCloudMode) {
+                        const defaultContent = JSON.stringify({
+                            meta: fileMeta[newId],
+                            blocks: database[newId]
+                        }, null, 2);
+                        await window.RhizomeDrive.createNote(newId, defaultContent);
+                    }
+                    
+                    // 刷新側邊欄目錄
+                    if (isCloudMode) {
+                        if (window.RhizomeDrive && typeof window.RhizomeDrive.buildTreeFromDrive === 'function') {
+                            await window.RhizomeDrive.buildTreeFromDrive();
+                        }
+                    }
+                    if (typeof renderSidebar === 'function') renderSidebar();
+                    
+                    switchNote(newId);
+                    toast(`✨ 已成功建立並跳轉：${noteName}`);
+                } catch (err) {
+                    console.error(err);
+                    toast('❌ 建立 Wiki 筆記失敗');
+                }
+            }
+        }
+    } else {
+        // B. 全域搜尋連動
+        // 你的 app.js 中，全域搜尋輸入框的 ID 是 'cmdInput'
+        const searchInput = $('cmdInput');
+        if (searchInput) {
+            // 觸發顯示命令面板
+            if (typeof showCmdPalette === 'function') showCmdPalette();
+            
+            searchInput.value = noteName;
+            // 觸發你的全域搜尋篩選監聽器
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInput.focus();
+            toast(`🔍 已將「${noteName}」帶入全域搜尋`);
+        } else {
+            toast('❌ 找不到搜尋輸入欄位');
+        }
+    }
+});
  
     // Click outside to close modals
     $('cmdPalette').addEventListener('click', e => { if (e.target === $('cmdPalette')) closeCmdPalette(); });
@@ -913,15 +904,25 @@ function renderBlock(block, index, blocks, c) {
             updateStatsDebounced();
             refreshInlineRender(editor);
         });
+       editor.addEventListener('focus', () => {
+            $('editorToolbar') && show($('editorToolbar'));
+            
+            // 🚀 關鍵修正 1：進入編輯狀態時，把內存的純文字還原給編輯器，避免 HTML 標籤干擾游標與打字
+            editor.textContent = block.content || '';
+        });
+
         editor.addEventListener('blur', () => {
-            block.content = editor.innerHTML;
+            // 🚀 關鍵修正 2：離開編輯狀態時，將使用者的「純文字輸入」存回資料庫
+            block.content = editor.textContent;
+            
+            // 🚀 關鍵修正 3：立刻將畫面渲染成帶有 [[超連結]] 與行內程式碼的外觀
+            editor.innerHTML = inlineFormat(block.content);
+            
             scheduleSave();
             updateOutline();
         });
+
         editor.addEventListener('paste', e => handlePaste(e, block, index, blocks));
-        editor.addEventListener('focus', () => {
-            $('editorToolbar') && show($('editorToolbar'));
-        });
     }
 
     row.appendChild(drag);
