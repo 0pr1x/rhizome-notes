@@ -166,79 +166,7 @@ function bindGlobalEvents() {
 
     // Global keyboard shortcuts
     document.addEventListener('keydown', handleGlobalShortcut);
-    document.addEventListener('click', async (e) => {
-    const wikiLink = e.target.closest('.wiki-link');
-    if (!wikiLink) return;
 
-    e.preventDefault();
-    e.stopPropagation();
-
-    const noteName = wikiLink.getAttribute('data-note');
-    if (!noteName) return;
-
-    const isJumpKey = e.ctrlKey || e.metaKey;
-
-    if (isJumpKey) {
-        // A. 跳轉或建立
-        let targetFileId = Object.keys(database).find(id => {
-            return (fileMeta[id] && fileMeta[id].title === noteName) || id === noteName || id === (noteName + '.json');
-        });
-
-        if (targetFileId) {
-            switchNote(targetFileId);
-            toast(`➡️ 已跳轉至：${noteName}`);
-        } else {
-            if (confirm(`筆記「${noteName}」不存在，是否立刻建立？`)) {
-                try {
-                    let newId = isCloudMode ? noteName + '.json' : noteName;
-                    
-                    // 初始化 database 快取，避免 switchNote 時找不到
-                    database[newId] = [{ id: uid('b'), content: noteName, indent: 0 }];
-                    fileMeta[newId] = { title: noteName, created: Date.now(), modified: Date.now() };
-
-                    if (isCloudMode) {
-                        const defaultContent = JSON.stringify({
-                            meta: fileMeta[newId],
-                            blocks: database[newId]
-                        }, null, 2);
-                        await window.RhizomeDrive.createNote(newId, defaultContent);
-                    }
-                    
-                    // 刷新側邊欄目錄
-                    if (isCloudMode) {
-                        if (window.RhizomeDrive && typeof window.RhizomeDrive.buildTreeFromDrive === 'function') {
-                            await window.RhizomeDrive.buildTreeFromDrive();
-                        }
-                    }
-                    if (typeof renderSidebar === 'function') renderSidebar();
-                    
-                    switchNote(newId);
-                    toast(`✨ 已成功建立並跳轉：${noteName}`);
-                } catch (err) {
-                    console.error(err);
-                    toast('❌ 建立 Wiki 筆記失敗');
-                }
-            }
-        }
-    } else {
-        // B. 全域搜尋連動
-        // 你的 app.js 中，全域搜尋輸入框的 ID 是 'cmdInput'
-        const searchInput = $('cmdInput');
-        if (searchInput) {
-            // 觸發顯示命令面板
-            if (typeof showCmdPalette === 'function') showCmdPalette();
-            
-            searchInput.value = noteName;
-            // 觸發你的全域搜尋篩選監聽器
-            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-            searchInput.focus();
-            toast(`🔍 已將「${noteName}」帶入全域搜尋`);
-        } else {
-            toast('❌ 找不到搜尋輸入欄位');
-        }
-    }
-});
- 
     // Click outside to close modals
     $('cmdPalette').addEventListener('click', e => { if (e.target === $('cmdPalette')) closeCmdPalette(); });
     $('graphModal').addEventListener('click', e => { if (e.target === $('graphModal')) hide($('graphModal')); });
@@ -611,16 +539,6 @@ async function switchNote(fileId) {
         const ok = await confirmLeaveUnsaved();
         if (!ok) return;
     }
-
-    // 🔧 新增：檢查是否有斷線時遺留的本地暫存
-    const draftStr = localStorage.getItem('nexus_draft_' + fileId);
-    if (draftStr) {
-        try {
-            database[fileId] = JSON.parse(draftStr);
-            isDirty = true; // 強制標記為未儲存，促使待會進行 Drive 同步
-            toast('⚠️ 已還原上次未成功上傳的草稿');
-        } catch(e) { }
-    }
     currentFileId = fileId;
     const title = fileId.split('/').pop().replace('.json', '');
     $('noteTitle').textContent = title;
@@ -895,45 +813,24 @@ function renderBlock(block, index, blocks, c) {
         renderTodoBlock(block, index, blocks, editor);
     } else {
         editor.contentEditable = 'true';
-        // 初始渲染：將儲存的 raw text 轉為帶 wiki-link span 的 HTML
-        editor.innerHTML = inlineFormat(block.content || '');
+        editor.innerHTML = renderInlineMarkdown(block.content || '');
 
         editor.addEventListener('keydown', e => handleBlockKeydown(e, block, index, blocks, c));
-
         editor.addEventListener('input', () => {
-            // 編輯中：只存 plain text，不動 DOM，避免游標跳位
-            block.content = editor.innerText;
+            block.content = editor.innerHTML;
             scheduleSave();
             updateStatsDebounced();
+            refreshInlineRender(editor);
         });
-
-        editor.addEventListener('focus', () => {
-            $('editorToolbar') && show($('editorToolbar'));
-            // 進入編輯時還原純文字，讓使用者可以正常輸入（包含 [[...]] 語法）
-            // 保留游標在末尾
-            const rawText = block.content || '';
-            editor.textContent = rawText;
-            // 游標移至末尾
-            try {
-                const range = document.createRange();
-                const sel = window.getSelection();
-                range.selectNodeContents(editor);
-                range.collapse(false);
-                sel.removeAllRanges();
-                sel.addRange(range);
-            } catch { }
-        });
-
         editor.addEventListener('blur', () => {
-            // block.content 在 focus 期間由 input 事件以 innerText 維護（純文字模式）
-            // blur 時直接取用，不從 innerHTML/innerText 重讀，避免 wiki-link span 的文字覆蓋掉 [[]] 語法
-            editor.innerHTML = inlineFormat(block.content);
+            block.content = editor.innerHTML;
             scheduleSave();
             updateOutline();
         });
-
-        // ★ Bug 1 Fix：paste 監聽掛在 editor 上，並確保 focus 不干擾 paste 流程
         editor.addEventListener('paste', e => handlePaste(e, block, index, blocks));
+        editor.addEventListener('focus', () => {
+            $('editorToolbar') && show($('editorToolbar'));
+        });
     }
 
     row.appendChild(drag);
@@ -998,11 +895,11 @@ function parseMarkdownToHtml(md) {
             const cells = trimmed.split('|').map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - 1);
             const tag = out.length === 0 || !inTable ? 'th' : 'td';
             if (tableBuffer.includes('<thead>') && !tableBuffer.includes('</thead>')) {
-                cells.forEach(c => tableBuffer += `<th>${(c)}</th>`);
+                cells.forEach(c => tableBuffer += `<th>${inlineFormat(c)}</th>`);
                 tableBuffer += '</tr></thead><tbody>';
             } else {
                 tableBuffer += '<tr>';
-                cells.forEach(c => tableBuffer += `<td>${(c)}</td>`);
+                cells.forEach(c => tableBuffer += `<td>${inlineFormat(c)}</td>`);
                 tableBuffer += '</tr>';
             }
             continue;
@@ -1013,17 +910,17 @@ function parseMarkdownToHtml(md) {
         }
 
         if (trimmed === '---' || trimmed === '***' || trimmed === '___') { out.push('<hr>'); continue; }
-        if (trimmed.startsWith('# ')) { out.push(`<h1>${(trimmed.slice(2))}</h1>`); continue; }
-        if (trimmed.startsWith('## ')) { out.push(`<h2>${(trimmed.slice(3))}</h2>`); continue; }
-        if (trimmed.startsWith('### ')) { out.push(`<h3>${(trimmed.slice(4))}</h3>`); continue; }
-        if (trimmed.startsWith('> ')) { out.push(`<blockquote>${(trimmed.slice(2))}</blockquote>`); continue; }
+        if (trimmed.startsWith('# ')) { out.push(`<h1>${inlineFormat(trimmed.slice(2))}</h1>`); continue; }
+        if (trimmed.startsWith('## ')) { out.push(`<h2>${inlineFormat(trimmed.slice(3))}</h2>`); continue; }
+        if (trimmed.startsWith('### ')) { out.push(`<h3>${inlineFormat(trimmed.slice(4))}</h3>`); continue; }
+        if (trimmed.startsWith('> ')) { out.push(`<blockquote>${inlineFormat(trimmed.slice(2))}</blockquote>`); continue; }
         if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('* [ ] ')) {
-            out.push(`<span class="todo-item">☐ ${(trimmed.slice(6))}</span>`); continue;
+            out.push(`<span class="todo-item">☐ ${inlineFormat(trimmed.slice(6))}</span>`); continue;
         }
         if (trimmed.startsWith('- [x] ') || trimmed.startsWith('* [x] ')) {
-            out.push(`<span class="todo-item done">☑ ${(trimmed.slice(6))}</span>`); continue;
+            out.push(`<span class="todo-item done">☑ ${inlineFormat(trimmed.slice(6))}</span>`); continue;
         }
-        if (trimmed) out.push((trimmed));
+        if (trimmed) out.push(inlineFormat(trimmed));
         else if (out.length) out.push('<br>');
     }
 
@@ -1032,32 +929,15 @@ function parseMarkdownToHtml(md) {
 }
 
 function inlineFormat(text) {
-    if (!text) return '';
-    
-    // text 是純文字（innerText），先做 HTML 轉義防止 XSS
-    let html = text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    
-    // 將換行轉為 <br>
-    html = html.replace(/\n/g, '<br>');
-
-    // 匹配 [[筆記名]] → wiki-link span（contenteditable=false 防止誤編輯）
-    html = html.replace(/\[\[(.*?)\]\]/g, (match, noteName) => {
-        const trimmed = noteName.trim();
-        if (!trimmed) return match;
-        const safe = trimmed.replace(/"/g, '&quot;');
-        return `<span class="wiki-link" data-note="${safe}" contenteditable="false">${trimmed}</span>`;
-    });
-
-    // 行內 code：`code`
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-    // **bold**
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-    return html;
+    return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/~~(.+?)~~/g, '<s>$1</s>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/\[\[(.+?)\]\]/g, (_, p) => `<span class="wiki-link" data-target="${p}" onclick="handleWikiClick(event, '${p.replace(/'/g, "\\'")}')">${p}</span>`)
+        .replace(/(^|\s)(#[\w\u4e00-\u9fa5]+)/g, '$1<span class="inline-tag" onclick="searchTag(\'$2\')">$2</span>')
+        .replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 }
 
 function escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -1164,18 +1044,13 @@ function renderImageBlock(block, index, blocks, editor) {
     img.style.width = block.width || '320px';
     img.alt = '圖片';
 
-    // 🔧 修正 1：把 dirHandle 條件放寬，讓 isCloudMode 也能進入此區塊
-    if ((dirHandle || isCloudMode) && block.src && block.src.startsWith('./image/')) {
+    if (dirHandle && block.src && block.src.startsWith('./image/')) {
         const fileName = block.src.replace('./image/', '');
         (async () => {
             try {
                 if (isCloudMode) {
-                    // 🔧 修正 2：優先使用 driveImageId，若無則查詢並「回寫」儲存
                     const driveId = block.driveImageId || await window.RhizomeDrive.resolveImageDriveId(fileName);
-                    if (driveId) {
-                        block.driveImageId = driveId; // 記錄 ID，下次載入更快
-                        img.src = await window.RhizomeDrive.getImageBlobUrl(driveId);
-                    }
+                    if (driveId) img.src = await window.RhizomeDrive.getImageBlobUrl(driveId);
                     else img.alt = '❌ 圖片遺失';
                 } else {
                     const imgDir = await dirHandle.getDirectoryHandle('image');
@@ -1216,26 +1091,7 @@ function renderImageBlock(block, index, blocks, editor) {
         renderBlocks(blocks);
         scheduleSave();
     });
-    // 🔧 新增：讓圖片區塊可被 Focus 並監聽鍵盤事件
-    wrap.tabIndex = 0; 
-    wrap.style.outline = 'none'; // 隱藏 focus 時的預設粗框
-    
-    wrap.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            // 在圖片下方插入新區塊
-            blocks.splice(index + 1, 0, { id: uid(), content: '', indent: block.indent || 0 });
-            renderBlocks(blocks);
-            scheduleSave();
-            setTimeout(() => focusBlock(index + 1), 10);
-        } else if (e.key === 'Backspace' || e.key === 'Delete') {
-            e.preventDefault();
-            deleteBlockAndChildren(index, blocks);
-            renderBlocks(blocks);
-            scheduleSave();
-            setTimeout(() => focusBlock(Math.max(0, index - 1)), 10);
-        }
-    });
+
     ctrl.append(slider, label, del);
     wrap.append(img, ctrl);
     editor.appendChild(wrap);
@@ -1306,27 +1162,13 @@ function focusBlock(index) {
     const c = $('blocksContainer');
     const row = c?.children[index];
     if (!row) return;
-    
-    const ed = row.querySelector('.block-editor');
+    const ed = row.querySelector('.block-editor, .todo-content');
     if (!ed) return;
-
-    // 圖片 block：contentEditable 為 false，改 focus 圖片 wrap
-    if (ed.contentEditable !== 'true') {
-        const imgWrap = ed.querySelector('.image-block-wrap');
-        if (imgWrap) {
-            imgWrap.focus();
-        }
-        return;
-    }
-
-    // 一般文字 block
-    const todo = ed.querySelector('.todo-content');
-    const target = todo || ed;
-    target.focus();
+    ed.focus();
     try {
         const range = document.createRange();
         const sel = window.getSelection();
-        range.selectNodeContents(target);
+        range.selectNodeContents(ed);
         range.collapse(false);
         sel.removeAllRanges();
         sel.addRange(range);
@@ -1397,58 +1239,45 @@ function getBlockIndex(editorEl) {
 
 // ─── Paste Handler ───────────────────────────────────────
 async function handlePaste(e, block, index, blocks) {
-    const clipData = e.clipboardData || e.originalEvent?.clipboardData;
-    if (!clipData) return;
-
-    // 先掃描是否有圖片類型的 item
-    const items = Array.from(clipData.items || []);
-    const imageItem = items.find(it => it.kind === 'file' && it.type.startsWith('image/'));
-
-    if (imageItem) {
-        e.preventDefault();
-        e.stopPropagation();
-        const file = imageItem.getAsFile();
-        if (!file) { toast('⚠️ 無法取得圖片檔案'); return; }
-        if (!isWorkspaceReady()) { toast('⚠️ 請先連結工作區'); return; }
-
-        const imgName = `img_${Date.now()}.png`;
-        const newBlock = {
-            id: uid(), type: 'image',
-            src: `./image/${imgName}`,
-            width: '320px',
-            indent: block.indent || 0
-        };
-
-        if (isCloudMode) {
-            newBlock._pendingImage = file;
-            blocks.splice(index + 1, 0, newBlock);
-            renderBlocks(blocks);
-            markDirty();
-            // 圖片插入後 focus 到圖片 block，讓 Enter 可繼續
-            setTimeout(() => focusBlock(index + 1), 30);
-            toast('🖼️ 圖片已加入（請按儲存上傳）');
-        } else {
-            try {
-                const imgDir = await dirHandle.getDirectoryHandle('image', { create: true });
-                const imgFh = await imgDir.getFileHandle(imgName, { create: true });
-                const w = await imgFh.createWritable();
-                await w.write(file);
-                await w.close();
-                blocks.splice(index + 1, 0, newBlock);
+    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items || [];
+    for (const it of items) {
+        if (it.kind === 'file' && it.type.startsWith('image/')) {
+            e.preventDefault();
+            const file = it.getAsFile();
+            if (!isWorkspaceReady()) { toast('⚠️ 請先連結工作區'); return; }
+            const imgName = `img_${Date.now()}.png`;
+            if (isCloudMode) {
+                blocks.splice(index + 1, 0, {
+                    id: uid(), type: 'image',
+                    src: `./image/${imgName}`,
+                    _pendingImage: file,
+                    width: '320px', indent: block.indent || 0
+                });
                 renderBlocks(blocks);
-                scheduleSave();
-                setTimeout(() => focusBlock(index + 1), 30);
-                toast('🖼️ 圖片已儲存');
-            } catch (err) {
-                toast('⚠️ 圖片寫入失敗');
-                console.error(err);
+                markDirty();
+                toast('🖼️ 圖片已加入（請按儲存上傳）');
+            } else {
+                try {
+                    const imgDir = await dirHandle.getDirectoryHandle('image', { create: true });
+                    const imgFh = await imgDir.getFileHandle(imgName, { create: true });
+                    const w = await imgFh.createWritable();
+                    await w.write(file);
+                    await w.close();
+                    blocks.splice(index + 1, 0, {
+                        id: uid(), type: 'image',
+                        src: `./image/${imgName}`, width: '320px', indent: block.indent || 0
+                    });
+                    renderBlocks(blocks);
+                    scheduleSave();
+                    toast('🖼️ 圖片已儲存');
+                } catch (err) { toast('⚠️ 圖片寫入失敗'); console.error(err); }
             }
+            return;
         }
-        return;
     }
 
     // Markdown paste
-    const rawText = clipData.getData('text/plain') || '';
+    const rawText = e.clipboardData?.getData('text/plain') || '';
     if (rawText && (rawText.includes('|') || /^#+\s/.test(rawText) || rawText.includes('**') || rawText.includes('```'))) {
         e.preventDefault();
         const html = parseMarkdownToHtml(rawText);
@@ -1461,8 +1290,6 @@ function markDirty() {
     if (!isCloudMode || !currentFileId) return;
     isDirty = true;
     updateSaveUI();
-    // 🔧 新增：隨時把變更寫入 LocalStorage，避免斷線或過期遺失
-    localStorage.setItem('nexus_draft_' + currentFileId, JSON.stringify(database[currentFileId]));
 }
 
 function clearDirty() {
@@ -1513,7 +1340,7 @@ function scheduleSave() {
     saveTimer = setTimeout(() => saveToDisk(false), 800);
     $('lastSaved').textContent = '儲存中…';
 }
-/*
+
 async function flushPendingImages(blocks) {
     if (!isCloudMode) return;
     for (const block of blocks) {
@@ -1525,28 +1352,7 @@ async function flushPendingImages(blocks) {
         delete block._pendingImage;
     }
 }
-*/
-async function flushPendingImages(blocks) {
-    if (!isCloudMode) return;
-    for (const block of blocks) {
-        if (block.type !== 'image' || !block._pendingImage) continue;
-        
-        const fileName = (block.src || '').replace('./image/', '') || `img_${Date.now()}.png`;
-        const result = await window.RhizomeDrive.uploadImage(block._pendingImage, fileName);
-        
-        // 1. 儲存原始的雲端硬碟 ID 供備用（這步保留，很棒）
-        block.driveImageId = result.driveId;
-        
-        // 2. 將 src 改為使用 ID 拼湊出的 Google Drive 圖片直鏈，取代相對路徑
-        // 格式 A：標準高相容性直鏈
-        block.src = `https://drive.google.com/uc?export=view&id=${result.driveId}`;
-        
-        // 格式 B（備用）：如果您發現格式 A 載入較慢，需要優化縮圖速度，可以用這行：
-        // block.src = `https://drive.google.com/thumbnail?id=${result.driveId}&sz=w1200`;
-        
-        delete block._pendingImage;
-    }
-}
+
 async function saveToDisk(showToast = false) {
     if (!currentFileId) return;
     if (isCloudMode && !window.RhizomeDrive?.isConnected()) {
@@ -1576,8 +1382,6 @@ async function saveToDisk(showToast = false) {
         if (isCloudMode) {
             await window.RhizomeDrive.saveNoteContent(currentFileId, json);
             clearDirty();
-            // 🔧 新增：儲存成功，清除本地暫存
-            localStorage.removeItem('nexus_draft_' + currentFileId); 
             if (showToast) toast('✅ 已儲存至 Google Drive');
         } else {
             const fh = fileHandleMap[currentFileId];
@@ -1591,9 +1395,8 @@ async function saveToDisk(showToast = false) {
         updateSaveUI();
     } catch (e) {
         console.error('[Rhizome] Save failed', e);
-        // 🔧 修改：失敗時的提示與引導，讓使用者可以直接點擊重新授權
-        $('lastSaved').innerHTML = '<span style="color:var(--danger); cursor:pointer;" onclick="connectGoogleDrive()">⚠️ 憑證過期，點擊重連</span>';
-        toast('⚠️ 儲存失敗 (已自動暫存於瀏覽器)');
+        $('lastSaved').textContent = '⚠️ 儲存失敗';
+        toast('⚠️ 儲存失敗');
     } finally {
         isSaving = false;
         updateSaveUI();

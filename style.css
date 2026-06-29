@@ -1725,39 +1725,3 @@ kbd {
     outline: 1px dashed var(--accent);
     border-radius: var(--radius-sm);
 }
-
-/* ========================================================
-   Wiki-link 超連結視覺樣式 
-   ======================================================== */
-.wiki-link {
-    color: var(--accent, #4f46e5);
-    text-decoration: none;
-    border-bottom: 1.5px solid var(--accent-dim, #c7d2fe);
-    cursor: pointer;
-    font-weight: 500;
-    padding: 0 3px;
-    margin: 0 1px;
-    border-radius: var(--radius-sm, 4px);
-    display: inline-block;
-    transition: all 0.15s ease;
-    background: var(--accent-soft, #eef2ff);
-    user-select: none; /* 非編輯模式不可選取，避免誤刪 */
-}
-
-/* 滑鼠懸停效果 */
-.wiki-link:hover {
-    color: var(--surface, #ffffff);
-    background-color: var(--accent, #4f46e5);
-    border-bottom-color: transparent;
-    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.25);
-}
-
-/* Dark mode 微調 */
-[data-theme="dark"] .wiki-link {
-    background: var(--accent-soft, #1e1b4b);
-    border-bottom-color: var(--accent-dim, #3730a3);
-}
-
-[data-theme="dark"] .wiki-link:hover {
-    color: #fff;
-}
