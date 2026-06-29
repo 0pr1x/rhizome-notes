@@ -539,6 +539,16 @@ async function switchNote(fileId) {
         const ok = await confirmLeaveUnsaved();
         if (!ok) return;
     }
+
+    // 🔧 新增：檢查是否有斷線時遺留的本地暫存
+    const draftStr = localStorage.getItem('nexus_draft_' + fileId);
+    if (draftStr) {
+        try {
+            database[fileId] = JSON.parse(draftStr);
+            isDirty = true; // 強制標記為未儲存，促使待會進行 Drive 同步
+            toast('⚠️ 已還原上次未成功上傳的草稿');
+        } catch(e) { }
+    }
     currentFileId = fileId;
     const title = fileId.split('/').pop().replace('.json', '');
     $('noteTitle').textContent = title;
@@ -1096,7 +1106,26 @@ function renderImageBlock(block, index, blocks, editor) {
         renderBlocks(blocks);
         scheduleSave();
     });
-
+    // 🔧 新增：讓圖片區塊可被 Focus 並監聽鍵盤事件
+    wrap.tabIndex = 0; 
+    wrap.style.outline = 'none'; // 隱藏 focus 時的預設粗框
+    
+    wrap.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            // 在圖片下方插入新區塊
+            blocks.splice(index + 1, 0, { id: uid(), content: '', indent: block.indent || 0 });
+            renderBlocks(blocks);
+            scheduleSave();
+            setTimeout(() => focusBlock(index + 1), 10);
+        } else if (e.key === 'Backspace' || e.key === 'Delete') {
+            e.preventDefault();
+            deleteBlockAndChildren(index, blocks);
+            renderBlocks(blocks);
+            scheduleSave();
+            setTimeout(() => focusBlock(Math.max(0, index - 1)), 10);
+        }
+    });
     ctrl.append(slider, label, del);
     wrap.append(img, ctrl);
     editor.appendChild(wrap);
@@ -1167,17 +1196,25 @@ function focusBlock(index) {
     const c = $('blocksContainer');
     const row = c?.children[index];
     if (!row) return;
+    
     const ed = row.querySelector('.block-editor, .todo-content');
     if (!ed) return;
-    ed.focus();
-    try {
-        const range = document.createRange();
-        const sel = window.getSelection();
-        range.selectNodeContents(ed);
-        range.collapse(false);
-        sel.removeAllRanges();
-        sel.addRange(range);
-    } catch { }
+
+    // 🔧 新增：判斷如果是可編輯文字，則 focus 文字；如果是圖片，則 focus 圖片容器
+    if (ed.contentEditable === 'true') {
+        ed.focus();
+        try {
+            const range = document.createRange();
+            const sel = window.getSelection();
+            range.selectNodeContents(ed);
+            range.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        } catch { }
+    } else {
+        const imgWrap = ed.querySelector('.image-block-wrap');
+        if (imgWrap) imgWrap.focus();
+    }
 }
 
 // ─── Toolbar commands ─────────────────────────────────────
@@ -1295,6 +1332,8 @@ function markDirty() {
     if (!isCloudMode || !currentFileId) return;
     isDirty = true;
     updateSaveUI();
+    // 🔧 新增：隨時把變更寫入 LocalStorage，避免斷線或過期遺失
+    localStorage.setItem('nexus_draft_' + currentFileId, JSON.stringify(database[currentFileId]));
 }
 
 function clearDirty() {
@@ -1408,6 +1447,8 @@ async function saveToDisk(showToast = false) {
         if (isCloudMode) {
             await window.RhizomeDrive.saveNoteContent(currentFileId, json);
             clearDirty();
+            // 🔧 新增：儲存成功，清除本地暫存
+            localStorage.removeItem('nexus_draft_' + currentFileId); 
             if (showToast) toast('✅ 已儲存至 Google Drive');
         } else {
             const fh = fileHandleMap[currentFileId];
@@ -1421,8 +1462,9 @@ async function saveToDisk(showToast = false) {
         updateSaveUI();
     } catch (e) {
         console.error('[Rhizome] Save failed', e);
-        $('lastSaved').textContent = '⚠️ 儲存失敗';
-        toast('⚠️ 儲存失敗');
+        // 🔧 修改：失敗時的提示與引導，讓使用者可以直接點擊重新授權
+        $('lastSaved').innerHTML = '<span style="color:var(--danger); cursor:pointer;" onclick="connectGoogleDrive()">⚠️ 憑證過期，點擊重連</span>';
+        toast('⚠️ 儲存失敗 (已自動暫存於瀏覽器)');
     } finally {
         isSaving = false;
         updateSaveUI();
