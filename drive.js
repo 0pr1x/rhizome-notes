@@ -406,6 +406,28 @@ window.RhizomeDrive = (() => {
         entry.name = newFileName;
     }
 
+    async function moveNote(fileId, newRelativePath) {
+        const entry = fileRegistry[fileId];
+        if (!entry) throw new Error('找不到檔案');
+
+        const parts = newRelativePath.split('/');
+        parts.pop(); // remove file name
+        let parentId = workspaceFolderId;
+        for (const part of parts) {
+            if (part) parentId = await findOrCreateSubfolder(parentId, part);
+        }
+
+        const fileData = await apiFetch('https://www.googleapis.com/drive/v3/files/' + entry.id + '?fields=parents');
+        const previousParents = (fileData.parents || []).join(',');
+
+        await apiFetch('https://www.googleapis.com/drive/v3/files/' + entry.id + '?addParents=' + parentId + '&removeParents=' + previousParents, {
+            method: 'PATCH'
+        });
+
+        delete fileRegistry[fileId];
+        fileRegistry[newRelativePath] = { id: entry.id, name: newRelativePath.split('/').pop() };
+    }
+
     return {
         signIn,
         isConnected,
@@ -419,6 +441,7 @@ window.RhizomeDrive = (() => {
         deleteNote,
         createFolder,
         renameNote,
+        moveNote,
         uploadImage,
         getImageBlobUrl,
         resolveImageDriveId,

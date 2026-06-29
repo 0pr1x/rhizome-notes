@@ -122,6 +122,10 @@ function bindGlobalEvents() {
     $('topSearch').addEventListener('keydown', e => {
         if (e.key === 'Escape') { $('topSearch').value = ''; handleSearch(''); }
     });
+    $('mobileSearch')?.addEventListener('input', e => handleSearch(e.target.value));
+    $('mobileSearch')?.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { $('mobileSearch').value = ''; handleSearch(''); }
+    });
 
     // Command palette
     $('cmdInput').addEventListener('input', filterCmdResults);
@@ -931,7 +935,7 @@ function inlineFormat(text) {
         .replace(/\*(.+?)\*/g, '<em>$1</em>')
         .replace(/~~(.+?)~~/g, '<s>$1</s>')
         .replace(/`(.+?)`/g, '<code>$1</code>')
-        .replace(/\[\[(.+?)\]\]/g, (_, p) => `<span class="wiki-link" data-target="${p}" onclick="jumpToWikiLink('${p.replace(/'/g, "\\'")}')">${p}</span>`)
+        .replace(/\[\[(.+?)\]\]/g, (_, p) => `<span class="wiki-link" data-target="${p}" onclick="handleWikiClick(event, '${p.replace(/'/g, "\\'")}')">${p}</span>`)
         .replace(/(^|\s)(#[\w\u4e00-\u9fa5]+)/g, '$1<span class="inline-tag" onclick="searchTag(\'$2\')">$2</span>')
         .replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 }
@@ -941,12 +945,20 @@ function escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').repl
 window.connectGoogleDrive = connectGoogleDrive;
 window.selectWorkspace = selectWorkspace;
 
-window.jumpToWikiLink = function (name) {
-    const target = Object.keys(database).find(id => id.replace('.json', '').split('/').pop() === name);
-    if (target) switchNote(target);
-    else {
-        if (confirm(`「${name}」尚未存在，要建立此筆記嗎？`)) {
+window.handleWikiClick = function (e, name) {
+    if (e.ctrlKey || e.metaKey) {
+        // Ctrl/Cmd + Click: Jump to note
+        const target = Object.keys(database).find(id => id.replace('.json', '').split('/').pop() === name);
+        if (target) switchNote(target);
+        else if (confirm(`「${name}」尚未存在，要建立此筆記嗎？`)) {
             createNoteByName(name);
+        }
+    } else {
+        // Normal Click: Search
+        const searchInput = $('topSearch') || $('mobileSearch');
+        if (searchInput) {
+            searchInput.value = `[[${name}]]`;
+            handleSearch(searchInput.value);
         }
     }
 };
@@ -1396,6 +1408,12 @@ function handleSearch(query) {
     const sr = $('searchResults');
     const bc = $('blocksContainer');
     const nh = $('noteHeader');
+
+    // 如果在手機版進行搜尋，搜尋後自動關閉側邊欄（如果是從側邊欄搜尋的話）
+    if (query.trim() && window.innerWidth <= 768) {
+        // 延遲一點點讓使用者看到輸入，或者直接關閉
+        // toggleMobileDrawer(false); 
+    }
 
     if (!query.trim()) {
         hide(sr);
@@ -1913,37 +1931,42 @@ function initDragAndDrop() {
 
 // 核心移動邏輯
 async function executeFileMove(fileId, sourcePath, targetPath) {
-    if (isCloudMode) {
-        toast('⚠️ 雲端版暫不支援拖曳移動筆記');
-        return;
-    }
     try {
-        const sourceHandle = fileHandleMap[fileId];
-        if (!sourceHandle) throw new Error("找不到該檔案的 Handle");
+        const fileName = fileId.split('/').pop();
+        const newFileId = (targetPath ? targetPath + '/' : '') + fileName;
 
-        // 解析並取得目標與來源的 DirectoryHandle
-        const targetDirHandle = await getDirHandleFromPath(targetPath);
-        const sourceDirHandle = await getDirHandleFromPath(sourcePath);
+        if (isCloudMode) {
+            toast('⏳ 正在移動雲端筆記...');
+            await window.RhizomeDrive.moveNote(fileId, newFileId);
+            
+            // 更新本地狀態
+            database[newFileId] = database[fileId];
+            fileMeta[newFileId] = fileMeta[fileId];
+            fileHandleMap[newFileId] = fileHandleMap[fileId];
+            delete database[fileId];
+            delete fileMeta[fileId];
+            delete fileHandleMap[fileId];
 
-        // 1. 讀取舊檔內容
-        const file = await sourceHandle.getFile();
-        const content = await file.text();
+            await scanAndBuildFromDrive();
+        } else {
+            const sourceHandle = fileHandleMap[fileId];
+            if (!sourceHandle) throw new Error("找不到該檔案的 Handle");
 
-        // 2. 在新資料夾建立同名新檔，並寫入內容
-        const newHandle = await targetDirHandle.getFileHandle(file.name, { create: true });
-        const writable = await newHandle.createWritable();
-        await writable.write(content);
-        await writable.close();
+            const targetDirHandle = await getDirHandleFromPath(targetPath);
+            const sourceDirHandle = await getDirHandleFromPath(sourcePath);
 
-        // 3. 刪除原本資料夾的舊檔 (確保寫入成功後才刪除)
-        await sourceDirHandle.removeEntry(file.name);
+            const file = await sourceHandle.getFile();
+            const content = await file.text();
 
-        toast('✅ 筆記已成功移動！');
+            const newHandle = await targetDirHandle.getFileHandle(file.name, { create: true });
+            const writable = await newHandle.createWritable();
+            await writable.write(content);
+            await writable.close();
 
-        // 重新掃描並重建目錄樹
-        if (typeof scanAndBuild === 'function') {
+            await sourceDirHandle.removeEntry(file.name);
             await scanAndBuild();
         }
+        toast('✅ 筆記已成功移動！');
     } catch (error) {
         console.error("移動失敗:", error);
         toast('⚠️ 移動失敗: ' + error.message);
