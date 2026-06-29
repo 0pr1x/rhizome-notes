@@ -1340,7 +1340,7 @@ function scheduleSave() {
     saveTimer = setTimeout(() => saveToDisk(false), 800);
     $('lastSaved').textContent = '儲存中…';
 }
-
+/*
 async function flushPendingImages(blocks) {
     if (!isCloudMode) return;
     for (const block of blocks) {
@@ -1352,7 +1352,28 @@ async function flushPendingImages(blocks) {
         delete block._pendingImage;
     }
 }
-
+*/
+async function flushPendingImages(blocks) {
+    if (!isCloudMode) return;
+    for (const block of blocks) {
+        if (block.type !== 'image' || !block._pendingImage) continue;
+        
+        const fileName = (block.src || '').replace('./image/', '') || `img_${Date.now()}.png`;
+        const result = await window.RhizomeDrive.uploadImage(block._pendingImage, fileName);
+        
+        // 1. 儲存原始的雲端硬碟 ID 供備用（這步保留，很棒）
+        block.driveImageId = result.driveId;
+        
+        // 2. 將 src 改為使用 ID 拼湊出的 Google Drive 圖片直鏈，取代相對路徑
+        // 格式 A：標準高相容性直鏈
+        block.src = `https://drive.google.com/uc?export=view&id=${result.driveId}`;
+        
+        // 格式 B（備用）：如果您發現格式 A 載入較慢，需要優化縮圖速度，可以用這行：
+        // block.src = `https://drive.google.com/thumbnail?id=${result.driveId}&sz=w1200`;
+        
+        delete block._pendingImage;
+    }
+}
 async function saveToDisk(showToast = false) {
     if (!currentFileId) return;
     if (isCloudMode && !window.RhizomeDrive?.isConnected()) {
