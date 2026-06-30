@@ -19,6 +19,7 @@ let saveTimer = null;
 let noteTree = [];      // raw tree structure
 let isDirty = false;
 let isSaving = false;
+let activeEditIndex = -1;  // 雙模式：目前正在編輯的 block index，-1 = 閱覽模式
 
 const isCloudMode = !!(window.RHIZOME_CONFIG?.USE_DRIVE);
 const DB_NAME = 'NexusNotesV4';
@@ -166,7 +167,79 @@ function bindGlobalEvents() {
 
     // Global keyboard shortcuts
     document.addEventListener('keydown', handleGlobalShortcut);
+    document.addEventListener('click', async (e) => {
+    const wikiLink = e.target.closest('.wiki-link');
+    if (!wikiLink) return;
 
+    e.preventDefault();
+    e.stopPropagation();
+
+    const noteName = wikiLink.getAttribute('data-note');
+    if (!noteName) return;
+
+    const isJumpKey = e.ctrlKey || e.metaKey;
+
+    if (isJumpKey) {
+        // A. 跳轉或建立
+        let targetFileId = Object.keys(database).find(id => {
+            return (fileMeta[id] && fileMeta[id].title === noteName) || id === noteName || id === (noteName + '.json');
+        });
+
+        if (targetFileId) {
+            switchNote(targetFileId);
+            toast(`➡️ 已跳轉至：${noteName}`);
+        } else {
+            if (confirm(`筆記「${noteName}」不存在，是否立刻建立？`)) {
+                try {
+                    let newId = isCloudMode ? noteName + '.json' : noteName;
+                    
+                    // 初始化 database 快取，避免 switchNote 時找不到
+                    database[newId] = [{ id: uid('b'), content: noteName, indent: 0 }];
+                    fileMeta[newId] = { title: noteName, created: Date.now(), modified: Date.now() };
+
+                    if (isCloudMode) {
+                        const defaultContent = JSON.stringify({
+                            meta: fileMeta[newId],
+                            blocks: database[newId]
+                        }, null, 2);
+                        await window.RhizomeDrive.createNote(newId, defaultContent);
+                    }
+                    
+                    // 刷新側邊欄目錄
+                    if (isCloudMode) {
+                        if (window.RhizomeDrive && typeof window.RhizomeDrive.buildTreeFromDrive === 'function') {
+                            await window.RhizomeDrive.buildTreeFromDrive();
+                        }
+                    }
+                    if (typeof renderSidebar === 'function') renderSidebar();
+                    
+                    switchNote(newId);
+                    toast(`✨ 已成功建立並跳轉：${noteName}`);
+                } catch (err) {
+                    console.error(err);
+                    toast('❌ 建立 Wiki 筆記失敗');
+                }
+            }
+        }
+    } else {
+        // B. 全域搜尋連動
+        // 你的 app.js 中，全域搜尋輸入框的 ID 是 'cmdInput'
+        const searchInput = $('cmdInput');
+        if (searchInput) {
+            // 觸發顯示命令面板
+            if (typeof showCmdPalette === 'function') showCmdPalette();
+            
+            searchInput.value = noteName;
+            // 觸發你的全域搜尋篩選監聽器
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInput.focus();
+            toast(`🔍 已將「${noteName}」帶入全域搜尋`);
+        } else {
+            toast('❌ 找不到搜尋輸入欄位');
+        }
+    }
+});
+ 
     // Click outside to close modals
     $('cmdPalette').addEventListener('click', e => { if (e.target === $('cmdPalette')) closeCmdPalette(); });
     $('graphModal').addEventListener('click', e => { if (e.target === $('graphModal')) hide($('graphModal')); });
@@ -539,6 +612,18 @@ async function switchNote(fileId) {
         const ok = await confirmLeaveUnsaved();
         if (!ok) return;
     }
+
+    activeEditIndex = -1; // 切換筆記時回到閱覽模式
+
+    // 🔧 新增：檢查是否有斷線時遺留的本地暫存
+    const draftStr = localStorage.getItem('nexus_draft_' + fileId);
+    if (draftStr) {
+        try {
+            database[fileId] = JSON.parse(draftStr);
+            isDirty = true; // 強制標記為未儲存，促使待會進行 Drive 同步
+            toast('⚠️ 已還原上次未成功上傳的草稿');
+        } catch(e) { }
+    }
     currentFileId = fileId;
     const title = fileId.split('/').pop().replace('.json', '');
     $('noteTitle').textContent = title;
@@ -800,37 +885,110 @@ function renderBlock(block, index, blocks, c) {
         bullet.addEventListener('click', () => cycleBlockType(block, index, blocks));
     }
 
-    // Editor
+    // ── Dual-mode editor wrapper ──────────────────────────
     const editor = document.createElement('div');
     editor.className = 'block-editor';
-    editor.setAttribute('data-placeholder', index === 0 ? '開始記錄…' : '');
 
     if (block.type === 'image') {
-        editor.contentEditable = 'false';
+        // 圖片：純 view，無需 edit layer
         renderImageBlock(block, index, blocks, editor);
-    } else if (block.todo !== undefined) {
-        editor.contentEditable = 'false';
-        renderTodoBlock(block, index, blocks, editor);
-    } else {
-        editor.contentEditable = 'true';
-        editor.innerHTML = renderInlineMarkdown(block.content || '');
 
-        editor.addEventListener('keydown', e => handleBlockKeydown(e, block, index, blocks, c));
-        editor.addEventListener('input', () => {
-            block.content = editor.innerHTML;
-            scheduleSave();
-            updateStatsDebounced();
-            refreshInlineRender(editor);
-        });
-        editor.addEventListener('blur', () => {
-            block.content = editor.innerHTML;
+    } else if (block.todo !== undefined) {
+        // Todo：checkbox + contenteditable content（自帶互動，不套雙模式）
+        renderTodoBlock(block, index, blocks, editor);
+
+    } else {
+        // ── View layer（閱覽，預設顯示）──
+        const viewLayer = document.createElement('div');
+        viewLayer.className = 'block-view-layer';
+        viewLayer.setAttribute('data-placeholder', index === 0 ? '開始記錄…' : '');
+        viewLayer.innerHTML = inlineFormat(block.content || '');
+
+        // ── Edit layer（編輯，預設隱藏）──
+        const editLayer = document.createElement('div');
+        editLayer.className = 'block-edit-layer';
+        editLayer.contentEditable = 'true';
+        editLayer.setAttribute('data-placeholder', index === 0 ? '開始記錄…' : '');
+        editLayer.style.display = 'none';
+
+        // ── 進入編輯模式 ──
+        function activateEdit(clickEvent) {
+            if (editLayer.style.display !== 'none') return; // 已在編輯中
+            activeEditIndex = index;
+            viewLayer.style.display = 'none';
+            editLayer.style.display = '';
+            editLayer.textContent = block.content || '';
+            editLayer.focus();
+
+            // 游標定位：若有點擊事件，嘗試定位到點擊位置
+            if (clickEvent && document.caretRangeFromPoint) {
+                try {
+                    const range = document.caretRangeFromPoint(clickEvent.clientX, clickEvent.clientY);
+                    if (range) {
+                        const sel = window.getSelection();
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                } catch { moveCaretToEnd(editLayer); }
+            } else {
+                moveCaretToEnd(editLayer);
+            }
+        }
+
+        // ── 離開編輯模式 ──
+        function deactivateEdit() {
+            if (editLayer.style.display === 'none') return;
+            block.content = editLayer.innerText; // 純文字永遠是來源
+            editLayer.style.display = 'none';
+            viewLayer.style.display = '';
+            viewLayer.innerHTML = inlineFormat(block.content);
+            if (activeEditIndex === index) activeEditIndex = -1;
             scheduleSave();
             updateOutline();
+            updateStatsDebounced();
+        }
+
+        // ── 事件綁定 ──
+        viewLayer.addEventListener('click', e => activateEdit(e));
+
+        editLayer.addEventListener('keydown', e => handleBlockKeydown(e, block, index, blocks, c));
+
+        editLayer.addEventListener('input', () => {
+            block.content = editLayer.innerText;
+            scheduleSave();
+            updateStatsDebounced();
         });
-        editor.addEventListener('paste', e => handlePaste(e, block, index, blocks));
-        editor.addEventListener('focus', () => {
-            $('editorToolbar') && show($('editorToolbar'));
+
+        editLayer.addEventListener('blur', e => {
+            // 延遲判斷：若焦點移到同一筆記的另一個 edit-layer，不要 deactivate 又馬上 activate
+            // 直接 deactivate，目標 block 自己會 activateEdit
+            setTimeout(() => {
+                // 若焦點已移到另一 editLayer，本 block 仍應退出
+                if (document.activeElement !== editLayer) {
+                    deactivateEdit();
+                }
+            }, 0);
         });
+
+        editLayer.addEventListener('paste', e => handlePaste(e, block, index, blocks, activateEdit));
+
+        // Escape 回到閱覽
+        editLayer.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { e.preventDefault(); deactivateEdit(); }
+        });
+
+        // 若此 block 是當前 activeEditIndex，直接進入編輯（renderBlocks 後恢復狀態）
+        if (activeEditIndex === index) {
+            // 等 DOM 掛載後再 activate
+            requestAnimationFrame(() => activateEdit(null));
+        }
+
+        // 把 activateEdit/deactivateEdit 掛到 row 上，供 focusBlock 使用
+        row._activateEdit = activateEdit;
+        row._deactivateEdit = deactivateEdit;
+
+        editor.appendChild(viewLayer);
+        editor.appendChild(editLayer);
     }
 
     row.appendChild(drag);
@@ -895,11 +1053,11 @@ function parseMarkdownToHtml(md) {
             const cells = trimmed.split('|').map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - 1);
             const tag = out.length === 0 || !inTable ? 'th' : 'td';
             if (tableBuffer.includes('<thead>') && !tableBuffer.includes('</thead>')) {
-                cells.forEach(c => tableBuffer += `<th>${inlineFormat(c)}</th>`);
+                cells.forEach(c => tableBuffer += `<th>${(c)}</th>`);
                 tableBuffer += '</tr></thead><tbody>';
             } else {
                 tableBuffer += '<tr>';
-                cells.forEach(c => tableBuffer += `<td>${inlineFormat(c)}</td>`);
+                cells.forEach(c => tableBuffer += `<td>${(c)}</td>`);
                 tableBuffer += '</tr>';
             }
             continue;
@@ -910,17 +1068,17 @@ function parseMarkdownToHtml(md) {
         }
 
         if (trimmed === '---' || trimmed === '***' || trimmed === '___') { out.push('<hr>'); continue; }
-        if (trimmed.startsWith('# ')) { out.push(`<h1>${inlineFormat(trimmed.slice(2))}</h1>`); continue; }
-        if (trimmed.startsWith('## ')) { out.push(`<h2>${inlineFormat(trimmed.slice(3))}</h2>`); continue; }
-        if (trimmed.startsWith('### ')) { out.push(`<h3>${inlineFormat(trimmed.slice(4))}</h3>`); continue; }
-        if (trimmed.startsWith('> ')) { out.push(`<blockquote>${inlineFormat(trimmed.slice(2))}</blockquote>`); continue; }
+        if (trimmed.startsWith('# ')) { out.push(`<h1>${(trimmed.slice(2))}</h1>`); continue; }
+        if (trimmed.startsWith('## ')) { out.push(`<h2>${(trimmed.slice(3))}</h2>`); continue; }
+        if (trimmed.startsWith('### ')) { out.push(`<h3>${(trimmed.slice(4))}</h3>`); continue; }
+        if (trimmed.startsWith('> ')) { out.push(`<blockquote>${(trimmed.slice(2))}</blockquote>`); continue; }
         if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('* [ ] ')) {
-            out.push(`<span class="todo-item">☐ ${inlineFormat(trimmed.slice(6))}</span>`); continue;
+            out.push(`<span class="todo-item">☐ ${(trimmed.slice(6))}</span>`); continue;
         }
         if (trimmed.startsWith('- [x] ') || trimmed.startsWith('* [x] ')) {
-            out.push(`<span class="todo-item done">☑ ${inlineFormat(trimmed.slice(6))}</span>`); continue;
+            out.push(`<span class="todo-item done">☑ ${(trimmed.slice(6))}</span>`); continue;
         }
-        if (trimmed) out.push(inlineFormat(trimmed));
+        if (trimmed) out.push((trimmed));
         else if (out.length) out.push('<br>');
     }
 
@@ -929,15 +1087,32 @@ function parseMarkdownToHtml(md) {
 }
 
 function inlineFormat(text) {
-    return text
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/~~(.+?)~~/g, '<s>$1</s>')
-        .replace(/`(.+?)`/g, '<code>$1</code>')
-        .replace(/\[\[(.+?)\]\]/g, (_, p) => `<span class="wiki-link" data-target="${p}" onclick="handleWikiClick(event, '${p.replace(/'/g, "\\'")}')">${p}</span>`)
-        .replace(/(^|\s)(#[\w\u4e00-\u9fa5]+)/g, '$1<span class="inline-tag" onclick="searchTag(\'$2\')">$2</span>')
-        .replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    if (!text) return '';
+    
+    // text 是純文字（innerText），先做 HTML 轉義防止 XSS
+    let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    
+    // 將換行轉為 <br>
+    html = html.replace(/\n/g, '<br>');
+
+    // 匹配 [[筆記名]] → wiki-link span（contenteditable=false 防止誤編輯）
+    html = html.replace(/\[\[(.*?)\]\]/g, (match, noteName) => {
+        const trimmed = noteName.trim();
+        if (!trimmed) return match;
+        const safe = trimmed.replace(/"/g, '&quot;');
+        return `<span class="wiki-link" data-note="${safe}" contenteditable="false">${trimmed}</span>`;
+    });
+
+    // 行內 code：`code`
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // **bold**
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    return html;
 }
 
 function escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -1044,13 +1219,18 @@ function renderImageBlock(block, index, blocks, editor) {
     img.style.width = block.width || '320px';
     img.alt = '圖片';
 
-    if (dirHandle && block.src && block.src.startsWith('./image/')) {
+    // 🔧 修正 1：把 dirHandle 條件放寬，讓 isCloudMode 也能進入此區塊
+    if ((dirHandle || isCloudMode) && block.src && block.src.startsWith('./image/')) {
         const fileName = block.src.replace('./image/', '');
         (async () => {
             try {
                 if (isCloudMode) {
+                    // 🔧 修正 2：優先使用 driveImageId，若無則查詢並「回寫」儲存
                     const driveId = block.driveImageId || await window.RhizomeDrive.resolveImageDriveId(fileName);
-                    if (driveId) img.src = await window.RhizomeDrive.getImageBlobUrl(driveId);
+                    if (driveId) {
+                        block.driveImageId = driveId; // 記錄 ID，下次載入更快
+                        img.src = await window.RhizomeDrive.getImageBlobUrl(driveId);
+                    }
                     else img.alt = '❌ 圖片遺失';
                 } else {
                     const imgDir = await dirHandle.getDirectoryHandle('image');
@@ -1091,7 +1271,26 @@ function renderImageBlock(block, index, blocks, editor) {
         renderBlocks(blocks);
         scheduleSave();
     });
-
+    // 🔧 新增：讓圖片區塊可被 Focus 並監聽鍵盤事件
+    wrap.tabIndex = 0; 
+    wrap.style.outline = 'none'; // 隱藏 focus 時的預設粗框
+    
+    wrap.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            // 在圖片下方插入新區塊
+            blocks.splice(index + 1, 0, { id: uid(), content: '', indent: block.indent || 0 });
+            renderBlocks(blocks);
+            scheduleSave();
+            setTimeout(() => focusBlock(index + 1), 10);
+        } else if (e.key === 'Backspace' || e.key === 'Delete') {
+            e.preventDefault();
+            deleteBlockAndChildren(index, blocks);
+            renderBlocks(blocks);
+            scheduleSave();
+            setTimeout(() => focusBlock(Math.max(0, index - 1)), 10);
+        }
+    });
     ctrl.append(slider, label, del);
     wrap.append(img, ctrl);
     editor.appendChild(wrap);
@@ -1099,7 +1298,7 @@ function renderImageBlock(block, index, blocks, editor) {
 
 // ─── Keyboard Handling ───────────────────────────────────
 async function handleBlockKeydown(e, block, index, blocks, c) {
-    // 1. 優先處理特殊指令 (確保放在第一位，且必須加上 !e.shiftKey)
+    // 1. 優先處理特殊指令
     if (e.key === 'Enter' && !e.shiftKey && block.content.trim() === '/bl') {
         e.preventDefault();
         insertBacklinksToCurrentBlock(index, blocks);
@@ -1109,31 +1308,30 @@ async function handleBlockKeydown(e, block, index, blocks, c) {
         e.preventDefault();
         const newBlock = { id: uid(), content: '', indent: block.indent || 0 };
         blocks.splice(index + 1, 0, newBlock);
+        activeEditIndex = index + 1; // 新 block 進入編輯
         renderBlocks(blocks);
         scheduleSave();
-        setTimeout(() => focusBlock(index + 1), 10);
 
     } else if (e.key === 'Tab') {
         e.preventDefault();
         block.indent = Math.max(0, (block.indent || 0) + (e.shiftKey ? -24 : 24));
+        activeEditIndex = index; // 保持在同一 block
         renderBlocks(blocks);
         scheduleSave();
-        setTimeout(() => focusBlock(index), 10);
 
     } else if (e.key === 'Backspace') {
-        const el = c.children[index]?.querySelector('.block-editor');
-        const text = el ? el.innerText.trim() : '';
+        const editEl = c.children[index]?.querySelector('.block-edit-layer');
+        const text = editEl ? editEl.innerText.trim() : '';
         if (!text) {
             e.preventDefault();
             if (blocks.length > 1) {
-                // 【修改這裡】：改用級聯刪除
                 deleteBlockAndChildren(index, blocks);
+                activeEditIndex = Math.max(0, index - 1);
                 renderBlocks(blocks);
                 scheduleSave();
-                setTimeout(() => focusBlock(Math.max(0, index - 1)), 10);
             } else {
                 blocks[0].content = '';
-                if (el) el.innerHTML = '';
+                if (editEl) editEl.textContent = '';
                 scheduleSave();
             }
         }
@@ -1142,18 +1340,18 @@ async function handleBlockKeydown(e, block, index, blocks, c) {
         e.preventDefault();
         if (index > 0) {
             [blocks[index - 1], blocks[index]] = [blocks[index], blocks[index - 1]];
+            activeEditIndex = index - 1;
             renderBlocks(blocks);
             scheduleSave();
-            setTimeout(() => focusBlock(index - 1), 10);
         }
 
     } else if (e.key === 'ArrowDown' && e.altKey) {
         e.preventDefault();
         if (index < blocks.length - 1) {
             [blocks[index], blocks[index + 1]] = [blocks[index + 1], blocks[index]];
+            activeEditIndex = index + 1;
             renderBlocks(blocks);
             scheduleSave();
-            setTimeout(() => focusBlock(index + 1), 10);
         }
     }
 }
@@ -1162,13 +1360,31 @@ function focusBlock(index) {
     const c = $('blocksContainer');
     const row = c?.children[index];
     if (!row) return;
-    const ed = row.querySelector('.block-editor, .todo-content');
-    if (!ed) return;
-    ed.focus();
+
+    // 圖片 block：focus 到 wrap
+    const imgWrap = row.querySelector('.image-block-wrap');
+    if (imgWrap) { imgWrap.focus(); return; }
+
+    // Todo block
+    const todoContent = row.querySelector('.todo-content');
+    if (todoContent) {
+        todoContent.focus();
+        moveCaretToEnd(todoContent);
+        return;
+    }
+
+    // 一般 block：進入編輯模式
+    if (row._activateEdit) {
+        activeEditIndex = index;
+        row._activateEdit(null);
+    }
+}
+
+function moveCaretToEnd(el) {
     try {
         const range = document.createRange();
         const sel = window.getSelection();
-        range.selectNodeContents(ed);
+        range.selectNodeContents(el);
         range.collapse(false);
         sel.removeAllRanges();
         sel.addRange(range);
@@ -1178,60 +1394,62 @@ function focusBlock(index) {
 // ─── Toolbar commands ─────────────────────────────────────
 function applyBlockCommand(cmd) {
     const focused = document.activeElement;
-    if (!focused || focused.className.indexOf('block-editor') < 0) return;
-    const index = getBlockIndex(focused);
+    // 找到 edit-layer
+    const editEl = focused?.closest('.block-editor')?.querySelector('.block-edit-layer')
+                || (focused?.classList.contains('block-edit-layer') ? focused : null);
+    if (!editEl) return;
+    const index = getBlockIndex(editEl);
     if (index < 0 || !currentFileId) return;
     const blocks = database[currentFileId];
     const block = blocks[index];
 
     switch (cmd) {
-        case 'h1': wrapSelection(focused, 'h1'); break;
-        case 'h2': wrapSelection(focused, 'h2'); break;
-        case 'h3': wrapSelection(focused, 'h3'); break;
+        case 'h1': wrapSelectionText(editEl, '# '); break;
+        case 'h2': wrapSelectionText(editEl, '## '); break;
+        case 'h3': wrapSelectionText(editEl, '### '); break;
         case 'highlight': document.execCommand('backColor', false, '#fef08a'); break;
-        case 'code': document.execCommand('insertHTML', false, '<code>&nbsp;</code>'); break;
-        case 'quote': document.execCommand('insertHTML', false, '<blockquote>&nbsp;</blockquote>'); break;
+        case 'code': document.execCommand('insertText', false, '`code`'); break;
+        case 'quote': document.execCommand('insertText', false, '> '); break;
         case 'link': {
             const url = prompt('URL:');
             const text = prompt('連結文字:') || url;
-            if (url) document.execCommand('insertHTML', false, `<a href="${url}" target="_blank">${text}</a>`);
+            if (url) document.execCommand('insertText', false, `[${text}](${url})`);
             break;
         }
-        case 'tag': document.execCommand('insertHTML', false, ' #標籤 '); break;
+        case 'tag': document.execCommand('insertText', false, ' #標籤 '); break;
         case 'table': {
             const rows = parseInt(prompt('列數:', '3')) || 3;
             const cols = parseInt(prompt('欄數:', '3')) || 3;
-            let tableHtml = '<table>';
-            tableHtml += '<thead><tr>' + Array(cols).fill('<th>欄位</th>').join('') + '</tr></thead>';
-            tableHtml += '<tbody>';
-            for (let r = 0; r < rows - 1; r++) tableHtml += '<tr>' + Array(cols).fill('<td>&nbsp;</td>').join('') + '</tr>';
-            tableHtml += '</tbody></table>';
-            document.execCommand('insertHTML', false, tableHtml);
+            let md = '\n';
+            md += '| ' + Array(cols).fill('欄位').join(' | ') + ' |\n';
+            md += '| ' + Array(cols).fill('---').join(' | ') + ' |\n';
+            for (let r = 0; r < rows - 1; r++) md += '| ' + Array(cols).fill('   ').join(' | ') + ' |\n';
+            document.execCommand('insertText', false, md);
             break;
         }
-        case 'hr': document.execCommand('insertHTML', false, '<hr>'); break;
+        case 'hr': document.execCommand('insertText', false, '\n---\n'); break;
         case 'todo': {
             const newTodo = { id: uid(), todo: false, content: '', indent: block.indent || 0 };
             blocks.splice(index + 1, 0, newTodo);
+            activeEditIndex = -1;
             renderBlocks(blocks);
             scheduleSave();
             break;
         }
     }
-    if (block) { block.content = focused.innerHTML; scheduleSave(); }
+    if (block) { block.content = editEl.innerText; scheduleSave(); }
 }
 
-function wrapSelection(el, tag) {
+function wrapSelectionText(el, prefix) {
     const sel = window.getSelection();
     if (sel.rangeCount) {
-        const range = sel.getRangeAt(0);
-        const wrapper = document.createElement(tag);
-        range.surroundContents(wrapper);
+        const selected = sel.toString();
+        document.execCommand('insertText', false, prefix + selected);
     }
 }
 
-function getBlockIndex(editorEl) {
-    const row = editorEl.closest('.block-row');
+function getBlockIndex(el) {
+    const row = el.closest('.block-row');
     if (!row) return -1;
     const c = $('blocksContainer');
     return Array.from(c.children).indexOf(row);
@@ -1239,49 +1457,59 @@ function getBlockIndex(editorEl) {
 
 // ─── Paste Handler ───────────────────────────────────────
 async function handlePaste(e, block, index, blocks) {
-    const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items || [];
-    for (const it of items) {
-        if (it.kind === 'file' && it.type.startsWith('image/')) {
-            e.preventDefault();
-            const file = it.getAsFile();
-            if (!isWorkspaceReady()) { toast('⚠️ 請先連結工作區'); return; }
-            const imgName = `img_${Date.now()}.png`;
-            if (isCloudMode) {
-                blocks.splice(index + 1, 0, {
-                    id: uid(), type: 'image',
-                    src: `./image/${imgName}`,
-                    _pendingImage: file,
-                    width: '320px', indent: block.indent || 0
-                });
+    const clipData = e.clipboardData || e.originalEvent?.clipboardData;
+    if (!clipData) return;
+
+    const items = Array.from(clipData.items || []);
+    const imageItem = items.find(it => it.kind === 'file' && it.type.startsWith('image/'));
+
+    if (imageItem) {
+        e.preventDefault();
+        e.stopPropagation();
+        const file = imageItem.getAsFile();
+        if (!file) { toast('⚠️ 無法取得圖片檔案'); return; }
+        if (!isWorkspaceReady()) { toast('⚠️ 請先連結工作區'); return; }
+
+        const imgName = `img_${Date.now()}.png`;
+        const newBlock = {
+            id: uid(), type: 'image',
+            src: `./image/${imgName}`,
+            width: '320px',
+            indent: block.indent || 0
+        };
+
+        if (isCloudMode) {
+            newBlock._pendingImage = file;
+            blocks.splice(index + 1, 0, newBlock);
+            activeEditIndex = -1; // 圖片 block 無 edit layer
+            renderBlocks(blocks);
+            markDirty();
+            toast('🖼️ 圖片已加入（請按儲存上傳）');
+        } else {
+            try {
+                const imgDir = await dirHandle.getDirectoryHandle('image', { create: true });
+                const imgFh = await imgDir.getFileHandle(imgName, { create: true });
+                const w = await imgFh.createWritable();
+                await w.write(file);
+                await w.close();
+                blocks.splice(index + 1, 0, newBlock);
+                activeEditIndex = -1;
                 renderBlocks(blocks);
-                markDirty();
-                toast('🖼️ 圖片已加入（請按儲存上傳）');
-            } else {
-                try {
-                    const imgDir = await dirHandle.getDirectoryHandle('image', { create: true });
-                    const imgFh = await imgDir.getFileHandle(imgName, { create: true });
-                    const w = await imgFh.createWritable();
-                    await w.write(file);
-                    await w.close();
-                    blocks.splice(index + 1, 0, {
-                        id: uid(), type: 'image',
-                        src: `./image/${imgName}`, width: '320px', indent: block.indent || 0
-                    });
-                    renderBlocks(blocks);
-                    scheduleSave();
-                    toast('🖼️ 圖片已儲存');
-                } catch (err) { toast('⚠️ 圖片寫入失敗'); console.error(err); }
+                scheduleSave();
+                toast('🖼️ 圖片已儲存');
+            } catch (err) {
+                toast('⚠️ 圖片寫入失敗');
+                console.error(err);
             }
-            return;
         }
+        return;
     }
 
-    // Markdown paste
-    const rawText = e.clipboardData?.getData('text/plain') || '';
-    if (rawText && (rawText.includes('|') || /^#+\s/.test(rawText) || rawText.includes('**') || rawText.includes('```'))) {
+    // Markdown paste：直接插入純文字，edit-layer 是 textContent 模式
+    const rawText = clipData.getData('text/plain') || '';
+    if (rawText) {
         e.preventDefault();
-        const html = parseMarkdownToHtml(rawText);
-        document.execCommand('insertHTML', false, html);
+        document.execCommand('insertText', false, rawText);
     }
 }
 
@@ -1290,6 +1518,8 @@ function markDirty() {
     if (!isCloudMode || !currentFileId) return;
     isDirty = true;
     updateSaveUI();
+    // 🔧 新增：隨時把變更寫入 LocalStorage，避免斷線或過期遺失
+    localStorage.setItem('nexus_draft_' + currentFileId, JSON.stringify(database[currentFileId]));
 }
 
 function clearDirty() {
@@ -1340,7 +1570,7 @@ function scheduleSave() {
     saveTimer = setTimeout(() => saveToDisk(false), 800);
     $('lastSaved').textContent = '儲存中…';
 }
-
+/*
 async function flushPendingImages(blocks) {
     if (!isCloudMode) return;
     for (const block of blocks) {
@@ -1352,7 +1582,28 @@ async function flushPendingImages(blocks) {
         delete block._pendingImage;
     }
 }
-
+*/
+async function flushPendingImages(blocks) {
+    if (!isCloudMode) return;
+    for (const block of blocks) {
+        if (block.type !== 'image' || !block._pendingImage) continue;
+        
+        const fileName = (block.src || '').replace('./image/', '') || `img_${Date.now()}.png`;
+        const result = await window.RhizomeDrive.uploadImage(block._pendingImage, fileName);
+        
+        // 1. 儲存原始的雲端硬碟 ID 供備用（這步保留，很棒）
+        block.driveImageId = result.driveId;
+        
+        // 2. 將 src 改為使用 ID 拼湊出的 Google Drive 圖片直鏈，取代相對路徑
+        // 格式 A：標準高相容性直鏈
+        block.src = `https://drive.google.com/uc?export=view&id=${result.driveId}`;
+        
+        // 格式 B（備用）：如果您發現格式 A 載入較慢，需要優化縮圖速度，可以用這行：
+        // block.src = `https://drive.google.com/thumbnail?id=${result.driveId}&sz=w1200`;
+        
+        delete block._pendingImage;
+    }
+}
 async function saveToDisk(showToast = false) {
     if (!currentFileId) return;
     if (isCloudMode && !window.RhizomeDrive?.isConnected()) {
@@ -1382,6 +1633,8 @@ async function saveToDisk(showToast = false) {
         if (isCloudMode) {
             await window.RhizomeDrive.saveNoteContent(currentFileId, json);
             clearDirty();
+            // 🔧 新增：儲存成功，清除本地暫存
+            localStorage.removeItem('nexus_draft_' + currentFileId); 
             if (showToast) toast('✅ 已儲存至 Google Drive');
         } else {
             const fh = fileHandleMap[currentFileId];
@@ -1395,8 +1648,9 @@ async function saveToDisk(showToast = false) {
         updateSaveUI();
     } catch (e) {
         console.error('[Rhizome] Save failed', e);
-        $('lastSaved').textContent = '⚠️ 儲存失敗';
-        toast('⚠️ 儲存失敗');
+        // 🔧 修改：失敗時的提示與引導，讓使用者可以直接點擊重新授權
+        $('lastSaved').innerHTML = '<span style="color:var(--danger); cursor:pointer;" onclick="connectGoogleDrive()">⚠️ 憑證過期，點擊重連</span>';
+        toast('⚠️ 儲存失敗 (已自動暫存於瀏覽器)');
     } finally {
         isSaving = false;
         updateSaveUI();
